@@ -1,0 +1,40 @@
+# ridge_sample.inp script for the ridge.gfn package 
+# by Sven Schreiber 
+
+include ridge.gfn --force 
+
+open australia
+
+# specify some penalty values
+matrix lambdas = {0.36, 0.5}
+
+# define the variables
+series LHS = ldiff(PAU)
+list RHS = const ldiff(PUS) IUS IAU
+ 
+# run the main function with default values
+bundle b_ridge = ridge(lambdas, LHS, RHS)
+print b_ridge 
+
+# compare with the (computationally) naive alternative
+# (matrix-based function)
+matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
+print rn
+  
+## compare with OLS results 
+print "-- OLS comparison --"
+ols LHS RHS
+  
+## now test an underdetermined case, #param > #obs:
+numk = 20
+N = 10
+matrix my = mnormal(N, 1)
+matrix mX = mnormal(N, numk)
+
+# use the matrix-based backend function directly
+eval ridge_svd(lambdas[1], my, mX)[,1]
+
+## do a mechanical test of a no-constant case 
+RHS = RHS - const
+bundle b_ridge = ridge(lambdas, LHS, RHS)
+print b_ridge

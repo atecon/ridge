@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gretl-functions>
+<gretl-function-package name="ridge" no-data-ok="true" minver="2016c">
+<author email="svetosch@gmx.net">Sven Schreiber</author>
+<version>1.0</version>
+<date>2017-09-22</date>
+<description>Ridge regression</description>
+<tags>C13 C20</tags>
+<label>Ridge regression</label>
+<menu-attachment>MAINWIN/Model/LinearModels</menu-attachment>
+<help>
+Help text for the ridge.gfn package
+by Sven Schreiber
+(please ask questions and report bugs on the gretl mailing list if possible)
+
+This package implements the ridge regression, a penalized (or shrinkage) version of linear regression.
+Algebraically, the ridge estimator replaces the term (X'X) from OLS by the term (X'X + lambda * I), where lambda is a scalar penalty parameter (and I is the identity matrix). The default method in this package to calculate the solution is by a singular-value decomposition, and to work on the standardized variables (mean zero, unit variance). For other options see below.
+
+--------------------	
+The main function is also called &quot;ridge&quot; and takes the following arguments:
+(1) matrix lambdas: required, L-element vector of penalties; passing a scalar is also accepted by gretl
+(2) series y: required, the dependent variable
+(3) list X: required, the K regressors. If a constant is included, it is moved to the first position.
+(4) boolean printout: optional, default is 1 (=yes). Set to 0 to just get the return bundle and not print anything.
+
+Input data is standardized before doing ridge. The output is rescaled to match the original data, but since the demeaned data are used, no standard errors for the constant term coefficient are currently available.
+
+Returns a bundle with:
+- coeffs: KxL matrix of ridge estimators, L being number of lambdas;
+    If a constant term was originally included, its coefficient is estimated as mean(y - Xtilde'beta), where Xtilde does not contain the constant.  
+- tstats: KxL matrix of t-statistics; no tstat is available for the constant term, so if a constant term was given then tstats[1] is NA.
+- vcvs: L-element array of covariance matrices of estimated coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, where Ri is the inverse of (X'X + lambda * I). (No direct matrix inversion is done, though, for numerical reasons.)
+- uhats: TxL matrix of residual vectors, one for each lambda. 
+- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one for each lambda.
+-------------------
+
+For script use (e.g., in simulations) there are also three matrix-oriented functions: ridge_svd, ridge_naive, ridge_aux. These functions work on the input data as-is, no standardization is done, and they only accept a single penalty parameter.
+
+ridge_svd...
+uses the SVD to calculate results, takes the following arguments:
+(1) scalar lambda: required, the penalty parameter.
+(2) matrix my: required, data vector of the dependent variable.
+(3) matrix mX: required, data matrix of K regressors.
+(4) matrix-pointer resids: optional, acts as placeholder to retrieve the residuals (similar to gretl's built-in mols function).
+(5) boolean withcov: optional, default 1 (=yes), set to 0 to only return the coeff point estimates.
+
+Returns a matrix:
+Per default (withcov==1) a K x (1+K) matrix, the first col is the estimate beta_ridge, followed by the KxK matrix Cov(beta_ridge). Otherwise just a Kx1 matrix with the point estimates.
+
+ridge_naive...
+uses the textbook formulas directly, mainly for comparison purposes. Arguments and return values are identical to ridge_svd.
+
+ridge_aux...
+uses an auxiliary OLS regression to produce point estimates only, takes the following arguments:
+(1) scalar lambda: required, the penalty parameter.
+(2) matrix my: required, data vector of the dependent variable.
+(3) matrix mX: required, data matrix of K regressors.
+
+Returns a Kx1 coefficient matrix.
+-------------------
+
+To do:
+R2
+
+Changelog:
+- 1.0, September 2017: initial release
+</help>
+<gretl-function name="ridge" type="bundle" pkg-role="gui-main">
+ <params count="4">
+  <param name="lambdas" type="matrix">
+<description>Penalty params</description>
+  </param>
+  <param name="y" type="series">
+<description>Dep. variable</description>
+  </param>
+  <param name="X" type="list" const="true">
+<description>Regressors</description>
+  </param>
+  <param name="printout" type="bool" default="1">
+<description>Print results?</description>
+  </param>
+ </params>
+<code>/* Input data is standardized before doing ridge.
+The output is rescaled to match the original data.
+Results for a constant (if present) are ordered first.
+A scalar input for lambdas is treated by gretl as 1x1 matrix.
+Returns a bundle with:
+coeffs: KxL matrix of ridge estimators, L being number of lambdas;
+If a constant term was originally included, its coefficient
+is estimated as mean(y - Xtilde'beta), where Xtilde does not
+contain the constant.
+tstats: KxL matrix of t-statistics; no tstat is available for
+the constant term, so if a constant term was given then
+tstats[1] is NA.
+vcvs: L-element array of matrices, each Kbar x Kbar.
+Kbar is K, or K-1 if a constant term was originally included.
+uhats: TxL matrix of residual vectors, one for each lambda
+s2s: Lx1 vector of residual variance estimates (res'res / T)
+FIXME: R2 ?
+*/
+lambdas = vec(lambdas)	# ensure 1-dim
+L = nelem(lambdas)
+smpl --no-missing y X
+# check for constant
+list Xtilde = X - const
+wconst = nelem(Xtilde) &lt; nelem(X) ? 1 : 0
+# standardize and save factors for later
+matrix my = cdemean({y})
+scalar ysd = sdc(my)
+my = my ./ ysd
+matrix mX = cdemean({Xtilde})
+matrix Xsd = sdc(mX)	# gives row vector
+mX = mX ./ Xsd
+## cycle through the various lambdas
+matrix betas, tstats, resids, s2s, res, temp
+matrices betaCovs = array(L)
+loop i = 1..L -q
+  temp = ridge_svd(lambdas[i], my, mX)
+  betas ~= temp[,1]
+  betaCovs[i] = temp[, 2:]
+  tstats ~= temp[,1] ./ sqrt(diag(temp[, 2:]))
+  # rescale
+  betas[,i] = betas[,i] .* (ysd ./ Xsd')
+  betaCovs[i] = betaCovs[i] * ysd^2 ./ (Xsd'Xsd)
+  # construct residuals
+  res = {y} - {Xtilde} * betas[,i] # original data (w/o const)
+  resids ~= res	# resids may have non-zero mean
+  # estimate residual variance
+  res = cdemean(res)
+  s2s |= res'res / rows(my)
+endloop
+# insert the constant term
+if wconst
+  betas = meanc(resids) | betas
+  tstats = NA | tstats
+  list Xreorder = const Xtilde
+else
+  list Xreorder = X
+endif
+# labels
+strings Xnames = varnames(Xreorder)
+rownames(betas, Xnames)
+rownames(tstats, Xnames)
+if printout
+  strings lbl = Xnames + defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;)
+  print &quot;Ridge regression results&quot;
+  loop i = 1..L -q
+    matrix cmat = betas[,i] ~ (betas[,i] ./ tstats[,i])
+    matrix extra = lambdas[i] | sqrt(s2s[i])
+    modprint cmat lbl extra
+  endloop
+endif
+# copy to output
+return defbundle(&quot;coeffs&quot;, betas, &quot;tstats&quot;, tstats, &quot;vcvs&quot;, betaCovs, &quot;uhats&quot;, resids, &quot;s2s&quot;, s2s)
+</code>
+</gretl-function>
+<gretl-function name="ridge_svd" type="matrix">
+ <params count="5">
+  <param name="lambda" type="scalar"/>
+  <param name="my" type="matrix" const="true"/>
+  <param name="mX" type="matrix" const="true"/>
+  <param name="resids" type="matrixref" optional="true"/>
+  <param name="withcov" type="bool" default="1"/>
+ </params>
+<code># Ridge function using SVD
+# my: Tx1 vector
+# mX: TxK design matrix
+matrix out, U, Vt	# Vt: V transposed
+matrix sv = svd(mX, &amp;U, &amp;Vt)
+matrix E_lda_row = 1 / (sv.^2 + lambda)
+if withcov	# we will need the ridge inverse later
+  # ridge inverse
+  matrix ridgeI = (Vt' .* E_lda_row) * Vt
+  # beta, using this inverse
+  out = ridgeI * mX'my
+  matrix res = my - mX*out
+  scalar s2 = res'res / rows(mX)
+  matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
+  out ~= covbeta
+else
+  # beta, using the SVD output differently
+  out = ( Vt' .* (sv .* E_lda_row) ) * U'my
+endif
+if exists(resids)
+  resids = withcov ? res : my - mX*out
+endif
+return out
+</code>
+</gretl-function>
+<gretl-function name="ridge_naive" type="matrix">
+ <params count="5">
+  <param name="lambda" type="scalar"/>
+  <param name="my" type="matrix" const="true"/>
+  <param name="mX" type="matrix" const="true"/>
+  <param name="resids" type="matrixref" optional="true"/>
+  <param name="withcov" type="bool" default="1"/>
+ </params>
+<code># Ridge function using matrix algebraic formulas directly
+# Returns a K x (1 + K) matrix if withcov==1,
+# the first col is the estimate beta_ridge,
+# followed by the KxK matrix Cov(beta_ridge).
+# Otherwise just a Kx1 matrix.
+# If 'resids' is provided, it will be filled with residuals.
+matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
+# beta
+matrix out = ridgeI * mX'my
+if exists(resids) || withcov
+  matrix res = my - mX*out # y - Xb
+  if withcov
+    scalar s2 = res'res / rows(mX)
+    matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
+    out ~= covbeta
+  endif
+  if exists(resids)
+    resids = res
+  endif
+endif
+return out
+</code>
+</gretl-function>
+<gretl-function name="ridge_aux" type="matrix">
+ <params count="3">
+  <param name="lambda" type="scalar"/>
+  <param name="my" type="matrix" const="true"/>
+  <param name="mX" type="matrix" const="true"/>
+ </params>
+<code># Ridge function using auxiliary OLS
+# Here we do not obtain the Cov(b) matrix,
+# return is just Kx1 beta vector.
+K = cols(mX)
+matrix mXa = mX | (sqrt(lambda) * I(K))
+matrix mya = my | zeros(K,1)
+matrix beta = mols(mya, mXa)
+return beta
+</code>
+</gretl-function>
+<sample-script>
+# ridge_sample.inp script for the ridge.gfn package 
+# by Sven Schreiber 
+
+include ridge.gfn --force 
+
+open australia
+
+# specify some penalty values
+matrix lambdas = {0.36, 0.5}
+
+# define the variables
+series LHS = ldiff(PAU)
+list RHS = const ldiff(PUS) IUS IAU
+ 
+# run the main function with default values
+bundle b_ridge = ridge(lambdas, LHS, RHS)
+print b_ridge 
+
+# compare with the (computationally) naive alternative
+# (matrix-based function)
+matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
+print rn
+  
+## compare with OLS results 
+print &quot;-- OLS comparison --&quot;
+ols LHS RHS
+  
+## now test an underdetermined case, #param &gt; #obs:
+numk = 20
+N = 10
+matrix my = mnormal(N, 1)
+matrix mX = mnormal(N, numk)
+
+# use the matrix-based backend function directly
+eval ridge_svd(lambdas[1], my, mX)[,1]
+
+## do a mechanical test of a no-constant case 
+RHS = RHS - const
+bundle b_ridge = ridge(lambdas, LHS, RHS)
+print b_ridge
+</sample-script>
+</gretl-function-package>
+</gretl-functions>
+
