@@ -1,30 +1,80 @@
-# ridge_sample.inp script for the ridge.gfn package 
-# by Sven Schreiber 
+set verbose off
 
-include ridge.gfn --force 
+#include ridge.gfn --force
+include /home/at/git/ridge/ridge.inp		# SET PATH
 
-open australia
+scalar runEX = 2		# select an example
 
 # specify some penalty values
-matrix lambdas = {0.36, 0.5}
+# TODO: let's do the following within the function:
+# If the user doesn't specify lambda or nlambda, 
+  # we set nlambda=100 and lmax=400
+# In glmnet() a pre-check is ran: set lmax
+# there where most coefficients are 'close to zero'
+scalar nlambda = 100
+scalar lmax = 400
+matrix lambdas = seq(0.1, lmax, lmax/nlambda)
 
-# define the variables
-series LHS = ldiff(PAU)
-list RHS = const ldiff(PUS) IUS IAU
- 
+# Select loss function for cross-validation
+string loss_type = "rmse"		# 'rmse', 'mae', 'mape'
+
+# Select an example
+if runEX==1
+    open australia.gdt -q --preserve
+    
+    # define the variables
+    series LHS = ldiff(PAU)
+    list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+
+elif runEX==2
+    # Dataset from glmnet
+    open "/home/at/git/ridge/glmnet_QSE.csv" --quiet  --preserve
+    setobs 1 1 --special-time-series
+
+    rename X1 LHS
+    list RHS = const dataset
+    RHS -= LHS
+    #L2 = square(RHS)    
+endif
+
+# Training sample
+scalar train_end = nobs(LHS) - ceil(0.2*(nobs(LHS)))
+
+# Training sample
+smpl 1 train_end
+
 # run the main function with default values
-bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge 
+bundle b_ridge = ridge(lambdas, LHS, RHS, 0)
+#print b_ridge
+
+# Determine optimal lambda using data from the test set
+smpl full
+smpl (1+train_end) ;
+ridge_gridsearch(&b_ridge, LHS, RHS, loss_type, "foo", 1)
+print b_ridge
+# Grab coeff. conditional on optimal lambda
+eval b_ridge.coef_opt
+
+# Plot loss as a function of lambda
+string path = "display"
+Loss_Plot(&b_ridge, path)
+
+# Plot solution path
+string path = "display"
+Coef_Plot(&b_ridge, path)
+
+stop
+
 
 # compare with the (computationally) naive alternative
 # (matrix-based function)
 matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
 print rn
-  
-## compare with OLS results 
+
+## compare with OLS results
 print "-- OLS comparison --"
 ols LHS RHS
-  
+
 ## now test an underdetermined case, #param > #obs:
 numk = 20
 N = 10
@@ -34,7 +84,7 @@ matrix mX = mnormal(N, numk)
 # use the matrix-based backend function directly
 eval ridge_svd(lambdas[1], my, mX)[,1]
 
-## do a mechanical test of a no-constant case 
+## do a mechanical test of a no-constant case
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge

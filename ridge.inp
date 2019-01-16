@@ -1,32 +1,27 @@
-# author='Sven Schreiber'
-# email='svetosch@gmx.net'
-# version='1.0'
-# date='2017-09-22'
-
 function bundle ridge (matrix lambdas "Penalty params",
                        series y "Dep. variable",
                        const list X "Regressors",
                        bool printout[1] "Print results?")
     /* Input data is standardized before doing ridge.
-    The output is rescaled to match the original data.
-    Results for a constant (if present) are ordered first.
-    A scalar input for lambdas is treated by gretl as 1x1 matrix.
-    Returns a bundle with:
-    coeffs: KxL matrix of ridge estimators, L being number of lambdas;
-    If a constant term was originally included, its coefficient
-    is estimated as mean(y - Xtilde'beta), where Xtilde does not
-    contain the constant.
-    tstats: KxL matrix of t-statistics; no tstat is available for
-    the constant term, so if a constant term was given then
-    tstats[1] is NA.
-    vcvs: L-element array of matrices, each Kbar x Kbar.
-    Kbar is K, or K-1 if a constant term was originally included.
-    uhats: TxL matrix of residual vectors, one for each lambda
-    s2s: Lx1 vector of residual variance estimates (res'res / T)
-    FIXME: R2 ?
+       The output is rescaled to match the original data.
+       Results for a constant (if present) are ordered first.
+       A scalar input for lambdas is treated by gretl as 1x1 matrix.
+       Returns a bundle with:
+       coeffs: KxL matrix of ridge estimators, L being number of lambdas;
+       If a constant term was originally included, its coefficient
+       is estimated as mean(y - Xtilde'beta), where Xtilde does not
+       contain the constant.
+       tstats: KxL matrix of t-statistics; no tstat is available for
+       the constant term, so if a constant term was given then
+       tstats[1] is NA.
+       vcvs: L-element array of matrices, each Kbar x Kbar.
+       Kbar is K, or K-1 if a constant term was originally included.
+       uhats: TxL matrix of residual vectors, one for each lambda
+       s2s: Lx1 vector of residual variance estimates (res'res / T)
+       FIXME: R2 ?
     */
     lambdas = vec(lambdas)	# ensure 1-dim
-    L = nelem(lambdas)
+    L = rows(lambdas)
     smpl --no-missing y X
     # check for constant
     list Xtilde = X - const
@@ -39,22 +34,26 @@ function bundle ridge (matrix lambdas "Penalty params",
     matrix Xsd = sdc(mX)	# gives row vector
     mX = mX ./ Xsd
     ## cycle through the various lambdas
-    matrix betas, tstats, resids, s2s, res, temp
+    matrix s2s, res, temp
+    matrix betas = zeros(nelem(Xtilde), L)
+    matrix tstats = zeros(nelem(Xtilde), L)
+    matrix resids = zeros($nobs, L)
+    matrix s2s = zeros(L,1)
     matrices betaCovs = array(L)
     loop i = 1..L -q
-        temp = ridge_svd(lambdas[i], my, mX)
-        betas ~= temp[,1]
+        matrix temp = ridge_svd(lambdas[i], my, mX)
+        betas[,i] = temp[,1]
         betaCovs[i] = temp[, 2:]
-        tstats ~= temp[,1] ./ sqrt(diag(temp[, 2:]))
+        tstats[,i] = betas[,i] ./ sqrt(diag(temp[, 2:]))
         # rescale
         betas[,i] = betas[,i] .* (ysd ./ Xsd')
         betaCovs[i] = betaCovs[i] * ysd^2 ./ (Xsd'Xsd)
         # construct residuals
-        res = {y} - {Xtilde} * betas[,i] # original data (w/o const)
-        resids ~= res	# resids may have non-zero mean
+        matrix res = {y} - {Xtilde} * betas[,i] # original data (w/o const)
+        resids[,i] = res	# resids may have non-zero mean
         # estimate residual variance
         res = cdemean(res)
-        s2s |= res'res / rows(my)
+        s2s[i] = res'res / rows(my)
     endloop
     # insert the constant term
     if wconst
@@ -66,8 +65,8 @@ function bundle ridge (matrix lambdas "Penalty params",
     endif
     # labels
     strings Xnames = varnames(Xreorder)
-    rownames(betas, Xnames)
-    rownames(tstats, Xnames)
+    rnameset(betas, Xnames)
+    rnameset(tstats, Xnames)
     if printout
         strings lbl = Xnames + defarray("Penalty", "Resid SD")
         print "Ridge regression results"
@@ -78,8 +77,88 @@ function bundle ridge (matrix lambdas "Penalty params",
         endloop
     endif
     # copy to output
-    return defbundle("coeffs", betas, "tstats", tstats, "vcvs", betaCovs, "uhats", resids, "s2s", s2s)
+    return defbundle("lambdas", lambdas, "coeffs", betas, "tstats", tstats, "vcvs", betaCovs, "uhats", resids, "s2s", s2s, \
+      "Xnames", Xnames)
 end function
+
+function void ridge_gridsearch ( bundle *b "Created bundle from calling ridge() before",
+      series y "Dep. variable",
+      const list X "Regressors",
+      string loss_type "Loss function: 'rmse', 'mae', 'mape'",
+      string cv_type "Type of cross-validation",
+      bool printout[1] "Print results?")
+
+    # This function is supposed to run a grid-search and select the optimal lambda-value
+    # for some loss function.
+    # Most likely you want to use for y and X observations from the test set.
+
+    smpl --no-missing y X
+
+    L = rows(b.lambdas)
+    matrix loss = zeros(L,1)
+    #strings cnam = array(L)
+
+    # Compute forecast evaluation statistics for each eta value
+    if loss_type == "rmse"		# 'rmse', 'mae', 'mape'
+        scalar sel = 2
+    elif loss_type == "mae"
+        scalar sel = 3
+    elif loss_type == "mape"
+        scalar sel = 5
+    endif
+    # Predict and evaluate
+    loop i=1..L -q
+        matrix fc = {X} * b.coeffs[,i]		# construct forecast
+        loss[i] = fcstats(y, fc)[sel]
+        #cnam[i] = sprintf("lambda=%g", b.lambdas[i])
+    endloop
+    #rnameset(FCstat, cnam)
+    scalar pos_lambda = iminc(loss)			# position of lambda minimizing loss
+    scalar b.lambda_opt = b.lambdas[pos_lambda]		# optimal lambda value
+    matrix b.coef_opt = b.coeffs[,pos_lambda]		# optimal coefficient vector
+    rnameset(b.coef_opt, b.Xnames)
+    scalar b.loss_opt = loss[pos_lambda]
+    matrix b.loss = loss
+    string b.loss_type = loss_type
+    if printout
+        printf "\n*** '%s' minimized for lambda = %.2f ***\n", loss_type, b.lambda_opt
+        printf "*** Loss ('%s') is = %.5f ***\n", loss_type, b.loss_opt
+    endif
+end function
+
+function void Loss_Plot (bundle *b,
+                         string path "Set path or 'display'")
+    # Plot the loss function for each iteration
+    # TODO: glmnet also computes CIs based on CV-results
+
+    matrix mat = b.loss ~ log(b.lambdas)
+    scalar ymx = max(mat[,1])*1.02
+    plot mat
+        options with-lines fit=none
+        printf "set ylabel '%s' font ', 14'", b.loss_type
+        printf "set xlabel 'log(lambda)' font ', 14'"
+        literal set linetype 1 lc rgb "red" lw 2
+        literal set linetype 2 lc rgb "black" lw 2 pt 3
+        printf "set yrange[:%g]", ymx
+        printf "set arrow from 0,graph(%g,%g) to 0,graph(0,0) nohead ", b.lambda_opt, b.lambda_opt
+    end plot --output="@path"
+end function
+
+
+function void Coef_Plot (bundle *b,
+                         string path "Set path or 'display'")
+    # Plot the solution path as a function of log(lambda)
+    matrix mat = b.coeffs' ~ log(b.lambdas)    
+    plot mat
+        options with-lines fit=none
+        printf "set ylabel 'Coefficients' font ', 14'"
+        printf "set xlabel 'log(lambda)' font ', 14'"
+        literal set grid
+    end plot --output="@path"
+end function
+
+
+
 
 function matrix ridge_svd (scalar lambda,
                            const matrix my,
@@ -151,45 +230,3 @@ function matrix ridge_aux (scalar lambda,
     matrix beta = mols(mya, mXa)
     return beta
 end function
-
-# sample function call
-# ridge_sample.inp script for the ridge.gfn package 
-# by Sven Schreiber 
-
-include ridge.gfn --force 
-
-open australia
-
-# specify some penalty values
-matrix lambdas = {0.36, 0.5}
-
-# define the variables
-series LHS = ldiff(PAU)
-list RHS = const ldiff(PUS) IUS IAU
- 
-# run the main function with default values
-bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge 
-
-# compare with the (computationally) naive alternative
-# (matrix-based function)
-matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
-print rn
-  
-## compare with OLS results 
-print "-- OLS comparison --"
-ols LHS RHS
-  
-## now test an underdetermined case, #param > #obs:
-numk = 20
-N = 10
-matrix my = mnormal(N, 1)
-matrix mX = mnormal(N, numk)
-
-# use the matrix-based backend function directly
-eval ridge_svd(lambdas[1], my, mX)[,1]
-
-## do a mechanical test of a no-constant case 
-RHS = RHS - const
-bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge
