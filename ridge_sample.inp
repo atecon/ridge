@@ -68,8 +68,8 @@ bundle b_ridge = ridge(LHS, RHS, opts)
 print b_ridge
 
 # Determine optimal lambda using data from the test set
-smpl full
-smpl (1+train_end) ;
+#smpl full
+#smpl (1+train_end) ;
 
 # Run grid-search
 ridge_gridsearch(&b_ridge)
