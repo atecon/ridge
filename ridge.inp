@@ -1,7 +1,34 @@
-function bundle ridge (matrix lambdas "Penalty params",
-                       series y "Dep. variable",
+function bundle default_ridge_opts ()
+
+    # Set default values
+    bundle self = null
+    scalar self.nlambda = 100		# no. of shrinkage params to check
+    scalar self.lmax = 400			# maximal shrinkage param value
+    matrix self.lambdas = vec(seq(0.1, self.lmax, self.lmax/self.nlambda))
+
+    # For gridsearch
+    # TODO: use also in-sample based information criteria
+    string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"
+    if self.loss_type == "rmse"
+        scalar self.sel_loss = 2
+    elif self.loss_type == "mae"
+        scalar self.sel_loss = 3
+    elif self.loss_type == "mape"
+        scalar self.sel_loss = 5
+    endif    
+    # ???
+    string self.cv_type = ""			# Type of cross-validation"
+
+    scalar self.printout = 1		# Print results (default: True)
+
+    return self
+end function
+
+
+function bundle ridge (series y "Dep. variable",
                        const list X "Regressors",
-                       bool printout[1] "Print results?")
+                       bundle opts[null])
+
     /* Input data is standardized before doing ridge.
        The output is rescaled to match the original data.
        Results for a constant (if present) are ordered first.
@@ -20,139 +47,182 @@ function bundle ridge (matrix lambdas "Penalty params",
        s2s: Lx1 vector of residual variance estimates (res'res / T)
        FIXME: R2 ?
     */
-    lambdas = vec(lambdas)	# ensure 1-dim
-    L = rows(lambdas)
+
+    /*=======================*/
+    /* Main package function */
+    /*=======================*/
+    # Set up the bundle
+    bundle self = default_ridge_opts()
+    if exists(opts)
+        # override defaults
+        self = opts + self
+        self.nlambda = rows(vec(self.lambdas))
+    endif
+
+    # Drop missings
     smpl --no-missing y X
+    
+    # Put some stuff to the bundle
+    #=============================
+    series self.y = y
+    list self.X = X
+    list self.Xtilde = X - const    
     # check for constant
-    list Xtilde = X - const
-    wconst = nelem(Xtilde) < nelem(X) ? 1 : 0
+    scalar self.wconst = nelem(self.Xtilde) < nelem(self.X) ? 1 : 0
+
     # standardize and save factors for later
     matrix my = cdemean({y})
-    scalar ysd = sdc(my)
-    my = my ./ ysd
-    matrix mX = cdemean({Xtilde})
-    matrix Xsd = sdc(mX)	# gives row vector
-    mX = mX ./ Xsd
+    scalar self.ysd = sdc(my)
+    self.my = my ./ self.ysd
+    matrix mX = cdemean({self.Xtilde})
+    matrix self.Xsd = sdc(mX)			# gives row vector
+    self.mX = mX ./ self.Xsd
+
     ## cycle through the various lambdas
-    matrix s2s, res, temp
-    matrix betas = zeros(nelem(Xtilde), L)
-    matrix tstats = zeros(nelem(Xtilde), L)
-    matrix resids = zeros($nobs, L)
-    matrix s2s = zeros(L,1)
-    matrices betaCovs = array(L)
-    loop i = 1..L -q
-        matrix temp = ridge_svd(lambdas[i], my, mX)
-        betas[,i] = temp[,1]
-        betaCovs[i] = temp[, 2:]
-        tstats[,i] = betas[,i] ./ sqrt(diag(temp[, 2:]))
-        # rescale
-        betas[,i] = betas[,i] .* (ysd ./ Xsd')
-        betaCovs[i] = betaCovs[i] * ysd^2 ./ (Xsd'Xsd)
-        # construct residuals
-        matrix res = {y} - {Xtilde} * betas[,i] # original data (w/o const)
-        resids[,i] = res	# resids may have non-zero mean
-        # estimate residual variance
-        res = cdemean(res)
-        s2s[i] = res'res / rows(my)
-    endloop
+    est_ridge(&self)
+    
     # insert the constant term
-    if wconst
-        betas = meanc(resids) | betas
-        tstats = NA | tstats
-        list Xreorder = const Xtilde
+    if self.wconst
+        self.betas = meanc(self.resids) | self.betas
+        self.tstats = NA | self.tstats
+        list Xreorder = const self.Xtilde
     else
-        list Xreorder = X
+        list Xreorder = self.X
     endif
+    
     # labels
-    strings Xnames = varnames(Xreorder)
-    rnameset(betas, Xnames)
-    rnameset(tstats, Xnames)
-    if printout
-        strings lbl = Xnames + defarray("Penalty", "Resid SD")
+    strings self.Xnames = varnames(Xreorder)
+    
+    rnameset(self.betas, self.Xnames)
+    rnameset(self.tstats, self.Xnames)
+    /*
+    if self.printout
+        strings lbl = self.Xnames + defarray("Penalty", "Resid SD")
         print "Ridge regression results"
-        loop i = 1..L -q
-            matrix cmat = betas[,i] ~ (betas[,i] ./ tstats[,i])
-            matrix extra = lambdas[i] | sqrt(s2s[i])
+        loop i=1..self.nlambda -q
+            matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
+            matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
             modprint cmat lbl extra
         endloop
     endif
+    */
+
     # copy to output
-    return defbundle("lambdas", lambdas, "coeffs", betas, "tstats", tstats, "vcvs", betaCovs, "uhats", resids, "s2s", s2s, \
-      "Xnames", Xnames)
+    /*
+    return defbundle("lambdas", self.lambdas, "coeffs", self.betas, \
+      "tstats", self.tstats, "vcvs", self.betaCovs, "uhats", self.resids, \
+      "s2s", self.s2s, "Xnames", self.Xnames)      
+    */
+    return self
 end function
 
-function void ridge_gridsearch ( bundle *b "Created bundle from calling ridge() before",
-      series y "Dep. variable",
-      const list X "Regressors",
-      string loss_type "Loss function: 'rmse', 'mae', 'mape'",
-      string cv_type "Type of cross-validation",
-      bool printout[1] "Print results?")
 
-    # This function is supposed to run a grid-search and select the optimal lambda-value
-    # for some loss function.
-    # Most likely you want to use for y and X observations from the test set.
+function bundle ridge_gridsearch (bundle *self "Created bundle from calling ridge() before")
 
-    smpl --no-missing y X
+    /* This function is supposed to run a grid-search and select the
+    optimal lambda-value for some loss function. Most likely you want
+    to use for y and X observations from the test set. */
 
-    L = rows(b.lambdas)
-    matrix loss = zeros(L,1)
-    #strings cnam = array(L)
+    #smpl --no-missing y X
+
+    # store loss values
+    matrix loss = zeros(self.nlambda,1)
 
     # Compute forecast evaluation statistics for each eta value
-    if loss_type == "rmse"		# 'rmse', 'mae', 'mape'
-        scalar sel = 2
-    elif loss_type == "mae"
-        scalar sel = 3
-    elif loss_type == "mape"
-        scalar sel = 5
-    endif
     # Predict and evaluate
-    loop i=1..L -q
-        matrix fc = {X} * b.coeffs[,i]		# construct forecast
-        loss[i] = fcstats(y, fc)[sel]
+    loop i=1..self.nlambda -q
+        matrix fc = {self.X} * self.betas[,i]		# construct forecast
+        loss[i] = fcstats(self.y, fc)[self.sel_loss]
         #cnam[i] = sprintf("lambda=%g", b.lambdas[i])
     endloop
     #rnameset(FCstat, cnam)
-    scalar pos_lambda = iminc(loss)			# position of lambda minimizing loss
-    scalar b.lambda_opt = b.lambdas[pos_lambda]		# optimal lambda value
-    matrix b.coef_opt = b.coeffs[,pos_lambda]		# optimal coefficient vector
-    rnameset(b.coef_opt, b.Xnames)
-    scalar b.loss_opt = loss[pos_lambda]
-    matrix b.loss = loss
-    string b.loss_type = loss_type
-    if printout
-        printf "\n*** '%s' minimized for lambda = %.2f ***\n", loss_type, b.lambda_opt
-        printf "*** Loss ('%s') is = %.5f ***\n", loss_type, b.loss_opt
+    scalar pos_lambda = iminc(loss)					# position of lambda minimizing loss
+    scalar self.lambda_opt = self.lambdas[pos_lambda]	# optimal lambda value
+    scalar self.loss_opt = loss[pos_lambda]
+    matrix self.loss = loss
+    matrix self.beta_opt = self.betas[,pos_lambda]		# optimal coefficient vector
+    rnameset(self.beta_opt, self.Xnames)
+
+#    string self.loss_type = loss_type
+    if self.printout
+        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_opt
+        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_opt
     endif
+    
+    return self
 end function
 
-function void Loss_Plot (bundle *b,
+
+function bundle est_ridge (bundle *self)
+
+    /* Actual computation of ridge and related stats */
+    
+    matrix res = zeros($nobs,1)
+    matrix temp = {}
+    
+    # Matrix holder
+    matrix self.betas = zeros(nelem(self.Xtilde), self.nlambda)
+    matrix self.tstats = zeros(nelem(self.Xtilde), self.nlambda)
+    matrix self.resids = zeros($nobs, self.nlambda)
+    matrix self.s2s = zeros(self.nlambda, 1)
+    matrices self.betaCovs = array(self.nlambda)
+
+    loop i = 1..self.nlambda -q
+        matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX)
+        self.betas[,i] = temp[,1]
+        self.betaCovs[i] = temp[, 2:]
+        self.tstats[,i] = self.betas[,i] ./ sqrt(diag(temp[, 2:]))
+        
+        # rescale
+        self.betas[,i] = self.betas[,i] .* (self.ysd ./ self.Xsd')
+        self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
+        
+        # construct residuals
+        matrix res = {self.y} - {self.Xtilde} * self.betas[,i] # original data (w/o const)
+        self.resids[,i] = res				# resids may have non-zero mean
+        
+        # estimate residual variance
+        res = cdemean(res)
+        self.s2s[i] = res'res / rows(self.my)
+    endloop
+
+    return self
+end function
+
+
+
+function void plot_loss (bundle *self,
                          string path "Set path or 'display'")
     # Plot the loss function for each iteration
     # TODO: glmnet also computes CIs based on CV-results
-
-    matrix mat = b.loss ~ log(b.lambdas)
-    scalar ymx = max(mat[,1])*1.02
+    
+    matrix mat = ( vec(self.loss) ~ log(vec(self.lambdas)) )
+    scalar ymx = maxc(mat[,1])*1.02
     plot mat
         options with-lines fit=none
-        printf "set ylabel '%s' font ', 14'", b.loss_type
-        printf "set xlabel 'log(lambda)' font ', 14'"
+        printf "set ylabel '%s' font ', 12'", self.loss_type
+        printf "set xlabel 'log(lambda)' font ', 12'"
         literal set linetype 1 lc rgb "red" lw 2
         literal set linetype 2 lc rgb "black" lw 2 pt 3
         printf "set yrange[:%g]", ymx
-        printf "set arrow from 0,graph(%g,%g) to 0,graph(0,0) nohead ", b.lambda_opt, b.lambda_opt
+        printf "set key outside right"
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+        nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
     end plot --output="@path"
 end function
 
 
-function void Coef_Plot (bundle *b,
+function void plot_beta (bundle *self,
                          string path "Set path or 'display'")
     # Plot the solution path as a function of log(lambda)
-    matrix mat = b.coeffs' ~ log(b.lambdas)    
+    matrix mat = self.betas' ~ log(self.lambdas)
     plot mat
         options with-lines fit=none
-        printf "set ylabel 'Coefficients' font ', 14'"
-        printf "set xlabel 'log(lambda)' font ', 14'"
+        printf "set ylabel 'Coefficients' font ', 12'"
+        printf "set xlabel 'log(lambda)' font ', 12'"
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+        printf "set key outside right"
         literal set grid
     end plot --output="@path"
 end function
