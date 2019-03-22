@@ -222,7 +222,7 @@ function void plot_beta (bundle *self,
         printf "set xlabel 'log(lambda)' font ', 12'"
         printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
           nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-        printf "set key outside right"
+        printf "set key outside below"
         literal set grid
     end plot --output="@path"
 end function
