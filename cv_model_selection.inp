@@ -34,7 +34,7 @@ function bundle CrossValidation (series y "Dep. variable",
 
     # Drop missings
     # TODO: think about how to handle NAs
-    #smpl --no-missing y X
+#    smpl --no-missing y X
 
     self.y = y
     self.X = X

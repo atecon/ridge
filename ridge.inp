@@ -15,9 +15,10 @@ function bundle default_ridge_opts ()
         scalar self.sel_loss = 3
     elif self.loss_type == "mape"
         scalar self.sel_loss = 5
-    endif    
-    # ???
-    string self.cv_type = ""			# Type of cross-validation"
+    endif
+    
+    # for cv_model_selection package
+    string self.cv_type = "kfold"	# Type of cross-validation: "kfold", "loo"
 
     scalar self.printout = 1		# Print results (default: True)
 

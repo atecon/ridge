@@ -4,7 +4,7 @@ clear
 #include ridge.gfn --force
 include /home/at/git/ridge/ridge.inp		# SET PATH
 
-scalar runEX = 3		# select an example
+scalar runEX = 1		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
