@@ -1,0 +1,113 @@
+clear
+set verbose off
+
+
+function bundle default_cv_opts ()
+
+    # Set default values
+    bundle self = null
+    string self.cv_type = "kfold"	# "kfold", "rep_kfold", "loo", etc...
+    
+    scalar self.n_folds = 5			# divide sample into k groups of samples
+    
+
+    return self
+end function
+
+
+function bundle CrossValidation (series y "Dep. variable",
+      const list X "Regressors",
+      bundle opts[null])
+
+    # https://scikit-learn.org/stable/modules/cross_validation.html
+
+    /*=======================*/
+    /* Main package function */
+    /*=======================*/
+    
+    # Set up the bundle
+    bundle self = default_cv_opts()
+    if exists(opts)
+        # override defaults
+        self = opts + self
+    endif
+
+    # Drop missings
+    # TODO: think about how to handle NAs
+    #smpl --no-missing y X
+
+    self.y = y
+    self.X = X
+
+    # Call evaluation method
+    if self.cv_type=="kfold"
+        kfold(&self)
+    endif
+    
+    return self
+
+end function
+
+
+function bundle kfold (bundle *self) 
+
+    /* Function for running k-fold */
+
+    series y = self.y
+    list X = self.X
+
+    # Arrays holding samples
+    matrices self.y_train = array(self.n_folds)
+    matrices self.y_test = array(self.n_folds)
+    matrices self.X_train = array(self.n_folds)
+    matrices self.X_test = array(self.n_folds)
+    
+    # Lenght of each test sample
+    scalar self.foldsize = int( nobs(self.y)/self.n_folds )
+    scalar rest = $nobs - self.foldsize		# no. of remainder obs
+
+    series unit = seq($t1,$t2) 				# temporary index of units        
+    # initial test set
+    scalar start = $t1
+    scalar ende = ($t1+self.foldsize)-1
+
+    # Start looping
+    loop i=1..self.n_folds -q
+                  
+        series active_unit = 0					# temporary indicator series
+      
+        # Test set
+        smpl unit>=start && unit<=ende --restrict
+        active_unit = 1
+        print y unit active_unit -o
+        self.y_test[i] = {y}
+        self.X_test[i] = {X}
+
+        # Training set
+        smpl active_unit==0 --restrict --replace
+        print y unit active_unit -o
+        self.y_train[i] = {y}
+        self.X_train[i] = {X}
+
+        smpl full
+
+        # update start/ ende
+        start += self.foldsize
+        ende = start + self.foldsize-1
+        ende = (i==self.n_folds) ? (ende+rest) : ende
+    endloop
+    
+    return self
+
+end function
+
+/*
+# EXAMPLE
+open australia.gdt -q
+
+# define the variables
+series LHS = ldiff(PAU)
+list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+
+bundle b = CrossValidation(LHS, RHS)
+*/

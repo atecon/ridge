@@ -51,6 +51,7 @@ function bundle ridge (series y "Dep. variable",
     /*=======================*/
     /* Main package function */
     /*=======================*/
+    
     # Set up the bundle
     bundle self = default_ridge_opts()
     if exists(opts)
