@@ -34,5 +34,5 @@ endif
 
 bundle bout = CrossValidation(b)
 print bout
-#eval b.X_train[1]
+eval bout.X_train[1]		# grab array of X for 1st training set
 #print L -o

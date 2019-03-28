@@ -4,7 +4,7 @@ clear
 #include ridge.gfn --force
 include /home/at/git/ridge/ridge.inp		# SET PATH
 
-scalar runEX = 1		# select an example
+scalar runEX = 3		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -26,15 +26,15 @@ elif runEX==2
     # Dataset from glmnet
     open "/home/at/git/ridge/glmnet_QSE.csv" --quiet  --preserve
     setobs 1 1 --special-time-series
+    #setobs 1 1 --cross-section
 
     rename X1 LHS
     list RHS = const dataset
     RHS -= LHS
-    #L2 = square(RHS)    
     
 elif runEX==3
 
-    nulldata 500
+    nulldata 200
     setobs 1 1 --time-series
     series e = normal()
     series LHS = 1
@@ -61,7 +61,7 @@ bundle opts = null
 # lambda values to evaluate (optional; default 100 values between [0.1,400])
 #matrix opts.lambdas = {0.6,5}
 # Loss function for CV (optional, default "rmse")
-#string opts.loss_type = "rmse"		# 'rmse', 'mae', 'mape'
+string opts.loss_type = "rmse"		# 'rmse', 'mae', 'mape'
 
 # RUN
 bundle b_ridge = ridge(LHS, RHS, opts)
@@ -72,10 +72,12 @@ print b_ridge
 #smpl (1+train_end) ;
 
 # Run grid-search
+#================
 ridge_gridsearch(&b_ridge)
 #print b_ridge
 
 # Grab coeff. conditional on optimal lambda
+#==========================================
 eval b_ridge.beta_opt
 
 # Plot loss as a function of lambda

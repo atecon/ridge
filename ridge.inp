@@ -1,3 +1,10 @@
+
+
+
+include "/home/at/git/ridge/cv_data_generator.inp"
+
+
+
 function bundle default_ridge_opts ()
 
     # Set default values
@@ -19,6 +26,7 @@ function bundle default_ridge_opts ()
     
     # for cv_model_selection package
     string self.cv_type = "kfold"	# Type of cross-validation: "kfold", "loo"
+    scalar self.n_folds = 5			# no. of folds for "kfold"
 
     scalar self.printout = 1		# Print results (default: True)
 
@@ -80,23 +88,35 @@ function bundle ridge (series y "Dep. variable",
     matrix self.Xsd = sdc(mX)			# gives row vector
     self.mX = mX ./ self.Xsd
 
-    # cycle through the various lambdas
-    est_ridge(&self)
-    
-    # insert the constant term
-    if self.wconst
-        self.betas = meanc(self.resids) | self.betas
-        self.tstats = NA | self.tstats
-        list Xreorder = const self.Xtilde
-    else
-        list Xreorder = self.X
-    endif
-
 
     # Obtain test/train datasets for cross-validation
-    
-    list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
-    bundle cv = CrossValidation(LHS, RHS)
+    # We use the 2cv_data_generator" package for this
+    #================================================
+    bundle bcv = null
+    bcv.X = mX
+    bcv.y = my
+    genr index
+    matrix mindex = {index}
+    bcv.index = mindex
+    # further options for cv
+    bcv.cv_type = self.cv_type
+    bcv.n_folds = self.n_folds
+    bundle bcv = CrossValidation(bcv)
+    # store output in self
+    self.foldsize = bcv.foldsize
+    self.y_test = bcv.y_test
+    self.y_train = bcv.y_train
+    self.X_test = bcv.X_test
+    self.X_train = bcv.X_train
+
+
+    # Run cross-validation
+    #======================
+    cv_ridge(&self)
+
+    matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.fc_stats[,2:])
+    gnuplot 2 1 --matrix=cv_mean_loss --with-lines --fit=none --output=display
+    stop
 
 
 
@@ -124,6 +144,63 @@ function bundle ridge (series y "Dep. variable",
     */
     return self
 end function
+
+
+function bundle cv_ridge (bundle *self)
+
+    /* Cross-validation for Ridge estimator
+    using the cv_data_generator package */
+
+    # matrix for holding prediction loss
+    matrix fc_stats = vec(self.lambdas) ~ zeros(self.nlambda, self.n_folds)
+    strings cnam = array(1+self.n_folds)
+    cnam[1] = "Lambda"
+    
+    loop fold_loop=1..self.n_folds -q
+        cnam[1+fold_loop] = sprintf("fold=%d",fold_loop)
+
+        # Set up the training and test set
+        matrix my_train = self.y_train[fold_loop][,2:]
+        matrix mX_train = self.X_train[fold_loop][,2:]
+        matrix my_test = self.y_test[fold_loop][,2:]
+        matrix mX_test = self.X_test[fold_loop][,2:]
+        if self.wconst
+            # Add intercept to test set
+            mX_test = ones(rows(mX_test),1) ~ mX_test
+        endif
+        
+        # Loop over shrinkage values
+        loop i = 1..self.nlambda -q
+
+            # Train the model
+            matrix temp = ridge_svd(self.lambdas[i], my_train, mX_train)
+
+            bhat = temp[,1]
+            # rescale
+            bhat = bhat .* (sdc(my_train) ./ sdc(mX_train)')
+
+            # construct residuals
+            matrix res = my_train - mX_train*bhat 	# original data (w/o const)
+
+            # resids may have non-zero mean: insert the constant term
+            if self.wconst
+                bhat = meanc(res) | bhat
+            endif
+
+            # Fit model to test set
+            matrix fc = mX_test * bhat
+            # Compute loss
+            fc_stats[i,1+fold_loop] = fcstats(my_test, fc)[self.sel_loss]
+        endloop
+    endloop
+    
+    # attache column names
+    cnameset(fc_stats, cnam)
+    self.fc_stats = fc_stats	# a "n_lambdas by n_folds" matrix holding forecast losses
+    
+    return self
+end function
+
 
 
 function bundle ridge_gridsearch (bundle *self "Created bundle from calling ridge() before")
