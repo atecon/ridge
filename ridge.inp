@@ -112,11 +112,28 @@ function bundle ridge (series y "Dep. variable",
 
     # Run cross-validation
     #======================
-    cv_ridge(&self)
+    cv_ridge(&self)		# returns the "cv_loss" 5-dim. array
+    # Each matrix in cv_loss is of dim "n_lambdas by n_folds" matrices holding forecast losses
 
-    matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.fc_stats[,2:])
-    gnuplot 2 1 --matrix=cv_mean_loss --with-lines --fit=none --output=display
-    stop
+    
+    # Determine optimally trained model conditional
+    # on some loss metric
+    #================================================
+    get_optimal_ridge(&self)    
+# matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.cv_loss[self.sel_loss][,2:])
+
+    
+    
+
+    
+
+
+
+
+
+
+
+
 
 
 
@@ -146,17 +163,79 @@ function bundle ridge (series y "Dep. variable",
 end function
 
 
+
+function bundle get_optimal_ridge (bundle *self "Created bundle from calling ridge() before")
+
+    /* This function evaluates all computed loss values for a given metric
+    and determines the optimal shrinkage parameter 'lamba'. Fits the model
+    and returns its point estimate and additional regression information. */
+
+
+    # Conditional on a selected cross-validation metric, get the optimal 
+    # shrinkage parameter.
+    #-------------------------------------------------------------------
+    matrix cv = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold
+    # Obtain statitics across folds    
+    matrix cv_loss = meanr(cv[,2:]) ~ sdc((cv[,2:])')'
+
+    # Minimize mean(loss)
+    scalar rowsel = iminc(cv_loss[,1])
+    self.lambda_min = self.lambdas[rowsel]				# 'lambda' minimizing mean(loss)
+    self.loss_min = cv_loss[rowsel,1]					# assosciated loss    
+    # Minimize sd(loss)
+    scalar rowsel = iminc(cv_loss[,2])
+    self.lambda_min_se = self.lambdas[rowsel]			# 'lambda' minimizing sd(loss)
+    self.loss_min_se = cv_loss[rowsel,2]				# 'lambda' minimizing sd(loss)
+
+    
+
+
+    #rnameset(FCstat, cnam)
+    scalar pos_lambda = iminc(loss)					# position of lambda minimizing loss
+    scalar self.lambda_opt = self.lambdas[pos_lambda]	# optimal lambda value
+    scalar self.loss_opt = loss[pos_lambda]
+    matrix self.loss = loss
+    matrix self.beta_opt = self.betas[,pos_lambda]		# optimal coefficient vector
+    rnameset(self.beta_opt, self.Xnames)
+
+#    string self.loss_type = loss_type
+    if self.printout
+        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_opt
+        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_opt
+    endif
+    
+    return self
+end function
+
+
+
+
+
+function matrices gen_cv_loss_mat (bundle *self)
+    /* helper function generating an array of 
+    matrices for holding various CV eval. metrics */
+    scalar n_stats = 5			# ME, RMSE, MAE, MPE, MAPE    
+    matrices cv_loss = array(n_stats)
+    loop i=1..n_stats -q
+        cv_loss[i] = vec(self.lambdas) ~ zeros(self.nlambda, self.n_folds)
+    endloop
+    return cv_loss    
+end function    
+
+
+
 function bundle cv_ridge (bundle *self)
 
     /* Cross-validation for Ridge estimator
     using the cv_data_generator package */
-
-    # matrix for holding prediction loss
-    matrix fc_stats = vec(self.lambdas) ~ zeros(self.nlambda, self.n_folds)
+    
+    # Generate array of matrices holding various forecast eval. metrics
+    matrices cv_loss = gen_fc_stats_mat(&self)    
     strings cnam = array(1+self.n_folds)
     cnam[1] = "Lambda"
     
     loop fold_loop=1..self.n_folds -q
+        # string construction
         cnam[1+fold_loop] = sprintf("fold=%d",fold_loop)
 
         # Set up the training and test set
@@ -164,8 +243,7 @@ function bundle cv_ridge (bundle *self)
         matrix mX_train = self.X_train[fold_loop][,2:]
         matrix my_test = self.y_test[fold_loop][,2:]
         matrix mX_test = self.X_test[fold_loop][,2:]
-        if self.wconst
-            # Add intercept to test set
+        if self.wconst	# Add intercept to test set            
             mX_test = ones(rows(mX_test),1) ~ mX_test
         endif
         
@@ -187,17 +265,20 @@ function bundle cv_ridge (bundle *self)
                 bhat = meanc(res) | bhat
             endif
 
-            # Fit model to test set
-            matrix fc = mX_test * bhat
-            # Compute loss
-            fc_stats[i,1+fold_loop] = fcstats(my_test, fc)[self.sel_loss]
+            # Fit the model to test set + compute forecast loss
+            matrix mat = fcstats(my_test, mX_test*bhat)
+            loop j=1..5 -q 							# ME, RMSE, MAE, MPE, MAPE
+                cv_loss[j][i,1+fold_loop] = mat[j]
+            endloop
         endloop
     endloop
     
     # attache column names
-    cnameset(fc_stats, cnam)
-    self.fc_stats = fc_stats	# a "n_lambdas by n_folds" matrix holding forecast losses
-    
+    loop j=1..5 -q
+        cnameset(cv_loss[j], cnam)
+        self.cv_loss = cv_loss	# array of "n_lambdas by n_folds" matrices holding forecast loss
+    endloop
+        
     return self
 end function
 

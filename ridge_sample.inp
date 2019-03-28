@@ -63,17 +63,18 @@ bundle opts = null
 # Loss function for CV (optional, default "rmse")
 string opts.loss_type = "rmse"		# 'rmse', 'mae', 'mape'
 
-# RUN
+# Run training and evaluation using cross-validation
+#====================================================
 bundle b_ridge = ridge(LHS, RHS, opts)
 print b_ridge
 
-# Determine optimal lambda using data from the test set
-#smpl full
-#smpl (1+train_end) ;
-
-# Run grid-search
-#================
+# Grab optimal stuff
+#====================
 ridge_gridsearch(&b_ridge)
+
+
+
+
 #print b_ridge
 
 # Grab coeff. conditional on optimal lambda
