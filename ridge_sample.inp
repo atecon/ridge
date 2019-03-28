@@ -4,7 +4,7 @@ clear
 #include ridge.gfn --force
 include /home/at/git/ridge/ridge.inp		# SET PATH
 
-scalar runEX = 3		# select an example
+scalar runEX = 1		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -21,7 +21,7 @@ if runEX==1
     # define the variables
     series LHS = ldiff(PAU)
     list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
-
+    
 elif runEX==2
     # Dataset from glmnet
     open "/home/at/git/ridge/glmnet_QSE.csv" --quiet  --preserve

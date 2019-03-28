@@ -119,8 +119,11 @@ function bundle ridge (series y "Dep. variable",
     # Determine optimally trained model conditional
     # on some loss metric
     #================================================
-    get_optimal_ridge(&self)    
-# matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.cv_loss[self.sel_loss][,2:])
+    get_optimal_ridge(&self)
+    print self
+    stop
+    
+    # matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.cv_loss[self.sel_loss][,2:])
 
     
     
@@ -177,7 +180,7 @@ function bundle get_optimal_ridge (bundle *self "Created bundle from calling rid
     matrix cv = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold
     # Obtain statitics across folds    
     matrix cv_loss = meanr(cv[,2:]) ~ sdc((cv[,2:])')'
-
+    
     # Minimize mean(loss)
     scalar rowsel = iminc(cv_loss[,1])
     self.lambda_min = self.lambdas[rowsel]				# 'lambda' minimizing mean(loss)
@@ -187,21 +190,11 @@ function bundle get_optimal_ridge (bundle *self "Created bundle from calling rid
     self.lambda_min_se = self.lambdas[rowsel]			# 'lambda' minimizing sd(loss)
     self.loss_min_se = cv_loss[rowsel,2]				# 'lambda' minimizing sd(loss)
 
-    
 
-
-    #rnameset(FCstat, cnam)
-    scalar pos_lambda = iminc(loss)					# position of lambda minimizing loss
-    scalar self.lambda_opt = self.lambdas[pos_lambda]	# optimal lambda value
-    scalar self.loss_opt = loss[pos_lambda]
-    matrix self.loss = loss
-    matrix self.beta_opt = self.betas[,pos_lambda]		# optimal coefficient vector
-    rnameset(self.beta_opt, self.Xnames)
-
-#    string self.loss_type = loss_type
+    # TODO: add more informative printout considering both criteria lamba_min/ lambda_min_se
     if self.printout
-        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_opt
-        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_opt
+        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_min
+        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_min
     endif
     
     return self
