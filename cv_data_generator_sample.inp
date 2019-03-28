@@ -1,0 +1,14 @@
+clear 
+set verbose off
+
+include "/home/at/git/ridge/cv_data_generator.inp"
+
+
+# EXAMPLE
+open australia.gdt -q
+
+# define the variables
+series LHS = ldiff(PAU)
+list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+
+bundle b = CrossValidation(LHS, RHS)

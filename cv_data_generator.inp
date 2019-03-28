@@ -1,5 +1,11 @@
-clear
-set verbose off
+/*
+Package for generating datasets for cross-validation
+purposes.
+
+
+written by: Artur Tarassow (atecon@posteo.de)
+
+*/
 
 
 function bundle default_cv_opts ()
@@ -101,13 +107,5 @@ function bundle kfold (bundle *self)
 
 end function
 
-/*
-# EXAMPLE
-open australia.gdt -q
 
-# define the variables
-series LHS = ldiff(PAU)
-list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
 
-bundle b = CrossValidation(LHS, RHS)
-*/
