@@ -12,3 +12,6 @@ series LHS = ldiff(PAU)
 list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
 
 bundle b = CrossValidation(LHS, RHS)
+#print b
+#eval b.X_train[1]
+#print L -o

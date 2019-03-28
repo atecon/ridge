@@ -1,9 +1,9 @@
 /*
-Package for generating datasets for cross-validation
-purposes.
+   Package for generating datasets for cross-validation
+   purposes.
 
 
-written by: Artur Tarassow (atecon@posteo.de)
+   written by: Artur Tarassow (atecon@posteo.de)
 
 */
 
@@ -13,24 +13,24 @@ function bundle default_cv_opts ()
     # Set default values
     bundle self = null
     string self.cv_type = "kfold"	# "kfold", "rep_kfold", "loo", etc...
-    
+
     scalar self.n_folds = 5			# divide sample into k groups of samples
-    
+
 
     return self
 end function
 
 
 function bundle CrossValidation (series y "Dep. variable",
-      const list X "Regressors",
-      bundle opts[null])
+                                 const list X "Regressors",
+                                 bundle opts[null])
 
     # https://scikit-learn.org/stable/modules/cross_validation.html
 
     /*=======================*/
     /* Main package function */
     /*=======================*/
-    
+
     # Set up the bundle
     bundle self = default_cv_opts()
     if exists(opts)
@@ -40,60 +40,71 @@ function bundle CrossValidation (series y "Dep. variable",
 
     # Drop missings
     # TODO: think about how to handle NAs
-#    smpl --no-missing y X
+    #    smpl --no-missing y X
 
     self.y = y
     self.X = X
+    genr index
+    self.index = index		# index series for checking that values are related to the right unit
 
     # Call evaluation method
     if self.cv_type=="kfold"
         kfold(&self)
     endif
-    
+
     return self
 
 end function
 
 
-function bundle kfold (bundle *self) 
+function bundle kfold (bundle *self)
 
-    /* Function for running k-fold */
+/* Function for running k-fold:
+
+   Splits data in train/test sets.
+   Split dataset into k consecutive folds (without shuffling by default).
+   Each fold can be used once as a validation while the k - 1 remaining
+   folds form the training set.
+   
+   See: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.KFold.html
+    */
 
     series y = self.y
     list X = self.X
+    series index = self.index
 
     # Arrays holding samples
     matrices self.y_train = array(self.n_folds)
     matrices self.y_test = array(self.n_folds)
     matrices self.X_train = array(self.n_folds)
     matrices self.X_test = array(self.n_folds)
-    
+
     # Lenght of each test sample
     scalar self.foldsize = int( nobs(self.y)/self.n_folds )
     scalar rest = $nobs - self.foldsize		# no. of remainder obs
-
-    series unit = seq($t1,$t2) 				# temporary index of units        
+    
     # initial test set
-    scalar start = $t1
-    scalar ende = ($t1+self.foldsize)-1
+    scalar start = min(index)
+    scalar ende = (start+self.foldsize)-1
 
     # Start looping
     loop i=1..self.n_folds -q
-                  
-        series active_unit = 0					# temporary indicator series
-      
+        series active_set = 0					# # don't drop
+
         # Test set
-        smpl unit>=start && unit<=ende --restrict
-        active_unit = 1
-        print y unit active_unit -o
-        self.y_test[i] = {y}
-        self.X_test[i] = {X}
+        smpl index>=start && index<=ende --restrict
+        smpl y X --no-missing
+        active_set = 1							# don't drop
+        #       print y index active_set -o
+        self.y_test[i] = {index} ~ {y}
+        self.X_test[i] = {index} ~ {X}
 
         # Training set
-        smpl active_unit==0 --restrict --replace
-        print y unit active_unit -o
-        self.y_train[i] = {y}
-        self.X_train[i] = {X}
+        smpl active_set==0 --restrict --replace
+        smpl y X --no-missing
+        #        print y index active_set -o
+        self.y_train[i] = {index} ~ {y}
+        self.X_train[i] = {index} ~ {X}
 
         smpl full
 
@@ -102,10 +113,7 @@ function bundle kfold (bundle *self)
         ende = start + self.foldsize-1
         ende = (i==self.n_folds) ? (ende+rest) : ende
     endloop
-    
+
     return self
-
 end function
-
-
 
