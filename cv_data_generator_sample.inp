@@ -11,7 +11,28 @@ open australia.gdt -q
 series LHS = ldiff(PAU)
 list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
 
-bundle b = CrossValidation(LHS, RHS)
-#print b
+# Drop missing values
+smpl --no-missing LHS RHS
+
+scalar use_matrices = 1
+
+bundle b = null
+
+if use_matrices
+    matrix X = {RHS}
+    matrix y = {LHS}
+    genr index
+    matrix mindex = {index}
+    b.X = X
+    b.y = y
+    b.index = mindex
+    
+else
+    b.X = RHS
+    b.y = LHS
+endif
+
+bundle bout = CrossValidation(b)
+print bout
 #eval b.X_train[1]
 #print L -o

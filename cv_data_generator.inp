@@ -21,9 +21,34 @@ function bundle default_cv_opts ()
 end function
 
 
-function bundle CrossValidation (series y "Dep. variable",
+function void check_bundle (bundle *self)
+    /* Some initial checks for bundle completeness */
+        
+    if !inbundle(self, "y")
+        funcerr "Provide a series or vector of the endogenous named 'y'."
+    endif
+    if !inbundle(self, "X")
+        funcerr "Provide a series/list or matrix of the exogenous named 'X'."
+    endif
+
+    if typeof(self.y)==3 && typeof(self.X)==3 # both a matrices
+        if !inbundle(self, "index")
+            funcerr "Provide a vector holding index observations values (via 'genr index') named 'index'."
+        elif inbundle(self, "index")
+            if typeof(self.índex)!=3
+                funcerr "Make sure your object 'index' is of type matrix (row vector)."
+            endif            
+        endif
+    endif
+end function
+
+
+function bundle CrossValidation (bundle b)
+                                 /*                                   
+                                 series y "Dep. variable",
                                  const list X "Regressors",
-                                 bundle opts[null])
+                                   bundle opts[null])
+                                  */
 
     # https://scikit-learn.org/stable/modules/cross_validation.html
 
@@ -33,19 +58,26 @@ function bundle CrossValidation (series y "Dep. variable",
 
     # Set up the bundle
     bundle self = default_cv_opts()
-    if exists(opts)
+    if exists(b)
         # override defaults
-        self = opts + self
+        self = b + self
     endif
+    print self    
+
+
+    # Initial checks
+    #===============
+#    check_bundle(&self)
+
 
     # Drop missings
     # TODO: think about how to handle NAs
     #    smpl --no-missing y X
-
-    self.y = y
-    self.X = X
-    genr index
-    self.index = index		# index series for checking that values are related to the right unit
+   
+    if !inbundle(self, "index")
+        genr index
+        self.index = index		# index series for checking that values are related to the right unit
+    endif        
 
     # Call evaluation method
     if self.cv_type=="kfold"
@@ -53,7 +85,6 @@ function bundle CrossValidation (series y "Dep. variable",
     endif
 
     return self
-
 end function
 
 
@@ -69,9 +100,9 @@ function bundle kfold (bundle *self)
    See: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.KFold.html
     */
 
-    series y = self.y
-    list X = self.X
-    series index = self.index
+    y = self.y
+    X = self.X
+    index = self.index
 
     # Arrays holding samples
     matrices self.y_train = array(self.n_folds)
@@ -80,33 +111,51 @@ function bundle kfold (bundle *self)
     matrices self.X_test = array(self.n_folds)
 
     # Lenght of each test sample
-    scalar self.foldsize = int( nobs(self.y)/self.n_folds )
-    scalar rest = $nobs - self.foldsize		# no. of remainder obs
-    
+    scalar T = (typeof(y)==2) ? nobs(y) : rows(y)
+    scalar self.foldsize = int( T/self.n_folds )
+    scalar rest = T - self.foldsize		# no. of remainder obs
+
     # initial test set
     scalar start = min(index)
     scalar ende = (start+self.foldsize)-1
 
     # Start looping
     loop i=1..self.n_folds -q
-        series active_set = 0					# # don't drop
+                
 
         # Test set
-        smpl index>=start && index<=ende --restrict
-        smpl y X --no-missing
-        active_set = 1							# don't drop
-        #       print y index active_set -o
-        self.y_test[i] = {index} ~ {y}
-        self.X_test[i] = {index} ~ {X}
+        if typeof(y)==2			# For series-based approach
+            series active_set = 0					# don't drop: indicator for current sample
+            smpl index>=start && index<=ende --restrict
+            smpl y X --no-missing
+            active_set = 1						# don't drop
+            #       print y index active_set -o
+            self.y_test[i] = {index} ~ {y}
+            self.X_test[i] = {index} ~ {X}
+            
+        else					# For matrix-based approach
+            matrix active_set = (index.>=start && index.<=ende)
+            
+            self.y_test[i] = selifr(index,active_set) ~ selifr(y,active_set) #index[start:ende] ~ y[start:ende,]
+            self.X_test[i] = selifr(index,active_set) ~ selifr(X,active_set)
+        endif
+
 
         # Training set
-        smpl active_set==0 --restrict --replace
-        smpl y X --no-missing
-        #        print y index active_set -o
-        self.y_train[i] = {index} ~ {y}
-        self.X_train[i] = {index} ~ {X}
-
-        smpl full
+        if typeof(y)==2			# For series-based approach
+            smpl active_set==0 --restrict --replace
+            smpl y X --no-missing
+            #        print y index active_set -o
+            self.y_train[i] = {index} ~ {y}
+            self.X_train[i] = {index} ~ {X}
+            smpl full
+            
+        else
+            active_set = (active_set.=1) ? 0 : 1				# select training set
+            self.y_train[i] = selifr(index,active_set) ~ selifr(y,active_set)
+            self.X_train[i] = selifr(index,active_set) ~ selifr(X,active_set)
+        endif                
+        
 
         # update start/ ende
         start += self.foldsize

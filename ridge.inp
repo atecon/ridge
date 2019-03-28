@@ -80,7 +80,7 @@ function bundle ridge (series y "Dep. variable",
     matrix self.Xsd = sdc(mX)			# gives row vector
     self.mX = mX ./ self.Xsd
 
-    ## cycle through the various lambdas
+    # cycle through the various lambdas
     est_ridge(&self)
     
     # insert the constant term
@@ -91,10 +91,17 @@ function bundle ridge (series y "Dep. variable",
     else
         list Xreorder = self.X
     endif
+
+
+    # Obtain test/train datasets for cross-validation
     
+    list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+    bundle cv = CrossValidation(LHS, RHS)
+
+
+
     # labels
-    strings self.Xnames = varnames(Xreorder)
-    
+    strings self.Xnames = varnames(Xreorder)    
     rnameset(self.betas, self.Xnames)
     rnameset(self.tstats, self.Xnames)
     /*
@@ -193,45 +200,6 @@ end function
 
 
 
-function void plot_loss (bundle *self,
-                         string path "Set path or 'display'")
-    # Plot the loss function for each iteration
-    # TODO: glmnet also computes CIs based on CV-results
-    
-    matrix mat = ( vec(self.loss) ~ log(vec(self.lambdas)) )
-    scalar ymx = maxc(mat[,1])*1.02
-    plot mat
-        options with-lines fit=none
-        printf "set ylabel '%s' font ', 12'", self.loss_type
-        printf "set xlabel 'log(lambda)' font ', 12'"
-        literal set linetype 1 lc rgb "red" lw 2
-        literal set linetype 2 lc rgb "black" lw 2 pt 3
-        printf "set yrange[:%g]", ymx
-        printf "set key outside right"
-        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-        nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-    end plot --output="@path"
-end function
-
-
-function void plot_beta (bundle *self,
-                         string path "Set path or 'display'")
-    # Plot the solution path as a function of log(lambda)
-    matrix mat = self.betas' ~ log(self.lambdas)
-    plot mat
-        options with-lines fit=none
-        printf "set ylabel 'Coefficients' font ', 12'"
-        printf "set xlabel 'log(lambda)' font ', 12'"
-        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-        printf "set key outside below"
-        literal set grid
-    end plot --output="@path"
-end function
-
-
-
-
 function matrix ridge_svd (scalar lambda,
                            const matrix my,
                            const matrix mX,
@@ -301,4 +269,41 @@ function matrix ridge_aux (scalar lambda,
     matrix mya = my | zeros(K,1)
     matrix beta = mols(mya, mXa)
     return beta
+end function
+
+
+function void plot_loss (bundle *self,
+                         string path "Set path or 'display'")
+    # Plot the loss function for each iteration
+    # TODO: glmnet also computes CIs based on CV-results
+    
+    matrix mat = ( vec(self.loss) ~ log(vec(self.lambdas)) )
+    scalar ymx = maxc(mat[,1])*1.02
+    plot mat
+        options with-lines fit=none
+        printf "set ylabel '%s' font ', 12'", self.loss_type
+        printf "set xlabel 'log(lambda)' font ', 12'"
+        literal set linetype 1 lc rgb "red" lw 2
+        literal set linetype 2 lc rgb "black" lw 2 pt 3
+        printf "set yrange[:%g]", ymx
+        printf "set key outside right"
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+        nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+    end plot --output="@path"
+end function
+
+
+function void plot_beta (bundle *self,
+                         string path "Set path or 'display'")
+    # Plot the solution path as a function of log(lambda)
+    matrix mat = self.betas' ~ log(self.lambdas)
+    plot mat
+        options with-lines fit=none
+        printf "set ylabel 'Coefficients' font ', 12'"
+        printf "set xlabel 'log(lambda)' font ', 12'"
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+        printf "set key outside below"
+        literal set grid
+    end plot --output="@path"
 end function
