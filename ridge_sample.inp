@@ -4,7 +4,7 @@ clear
 #include ridge.gfn --force
 include /home/at/git/ridge/ridge.inp		# SET PATH
 
-scalar runEX = 1		# select an example
+scalar runEX = 3		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -37,7 +37,7 @@ elif runEX==2
     
 elif runEX==3
 
-    nulldata 1000
+    nulldata 500
     set seed 1234
     setobs 1 1 --time-series
     series e = normal()
@@ -62,6 +62,7 @@ bundle opts = null
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
 string opts.loss_type = "rmse"		# 'me', 'rmse' (default), 'mae', 'mape'
+string opts.cv_type = "loo"
 
 # Run training and evaluation using cross-validation
 #====================================================

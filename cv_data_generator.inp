@@ -38,11 +38,9 @@ function bundle CvDataGenerator (bundle b)
         self = b + self
     endif
 
-
     # Initial checks
     #===============
     check_bundle(&self)
-
 
     # Drop missings
     #===============
@@ -58,7 +56,8 @@ function bundle CvDataGenerator (bundle b)
 
     # Call evaluation method
     #=======================
-    if self.cv_type=="kfold"
+    if self.cv_type=="kfold" || self.cv_type=="loo"
+        # Run        
         kfold(&self)
     endif
 
@@ -69,14 +68,9 @@ end function
 function bundle default_cv_opts (void)    
     # Set default values of the bundle
     bundle self = null    
-    string self.cv_type = "kfold"	# "kfold", "rep_kfold", "loo", etc...
-    if self.cv_type != "loo"
-        scalar self.n_folds = 5			# divide sample into k groups of samples
-    else
-        scalar self.n_folds = 
-    endif    
-
-
+    string self.cv_type = "kfold"		# "kfold", "rep_kfold", "loo", 'recwin', 'rolwin'
+    scalar self.n_folds = 5				# divide sample into k groups of samples (default for kfold = 5)
+    scalar self.win_size = 0.25*$nobs	# for 'recwin'/'rolwin': initial window lenght
 
     return self
 end function
@@ -110,7 +104,13 @@ function bundle kfold (bundle *self)
    folds form the training set.
 
    See: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.KFold.html
-    */
+   */
+   
+        # 'loo' is a special case of 'kfold' with a single obs. left-out
+        # for each fold
+        self.n_folds = (self.cv_type=="loo") ? $nobs : self.n_folds
+
+
 
     X = self.X
     if typeof(X)==2 || typeof(X)==7
@@ -125,15 +125,13 @@ function bundle kfold (bundle *self)
 
     # Lenght of each test sample
     scalar T = (typeof(X)==7) ? $nobs : rows(X)
-    scalar self.foldsize = int( T/self.n_folds )
-    scalar rest = T - self.foldsize		# no. of remainder obs
-    rest
-    stop
-
+    scalar self.foldsize = int( T/self.n_folds )		# lengt of test sample
+    scalar rest = T - self.n_folds*self.foldsize		# no. of remainder obs
+    
     # initial test set
     scalar start = min(index)
     scalar ende = (start+self.foldsize)-1
-
+    
     # Start looping
     loop i=1..self.n_folds -q
 
@@ -141,7 +139,7 @@ function bundle kfold (bundle *self)
         if typeof(X)==7								# For list-based approach
             series active_set = 0					# don't drop: indicator for current sample
             smpl index>=start && index<=ende --restrict
-            smpl X --no-missing
+#           smpl X --no-missing
             active_set = 1						# don't drop
             self.X_test[i] = {index} ~ {X}
 
@@ -153,7 +151,7 @@ function bundle kfold (bundle *self)
         # Training set
         if typeof(X)==7			# For list-based approach
             smpl active_set==0 --restrict --replace
-            smpl X --no-missing
+#           smpl X --no-missing
             self.X_train[i] = {index} ~ {X}
             smpl full
 
@@ -161,7 +159,7 @@ function bundle kfold (bundle *self)
             active_set = (active_set.=1) ? 0 : 1				# select training set
             self.X_train[i] = selifr(index,active_set) ~ selifr(X,active_set)
         endif
-
+        
         # update start/ ende
         start += self.foldsize
         ende = start + self.foldsize-1

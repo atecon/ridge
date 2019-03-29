@@ -142,8 +142,9 @@ function bundle ridge (series y "Dep. variable",
 
     bcv.X = mX
     bundle bcv = CvDataGenerator(bcv)
-    # Grab test and training sets stored in array of matrices
-    self.foldsize = bcv.foldsize
+    self.foldsize = bcv.foldsize		# update some information
+    self.n_folds = bcv.n_folds
+    # Grab test and training sets stored in array of matrices   
     self.X_test = bcv.X_test
     self.X_train = bcv.X_train
     # Now for 'y'

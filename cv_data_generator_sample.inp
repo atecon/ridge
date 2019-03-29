@@ -31,6 +31,8 @@ else
     list b.X = LHS RHS
 endif
 
-bundle bout = CrossValidation(b)
+b.cv_type = "loo"				# 'kfold', 'loo'
+bundle bout = CvDataGenerator(b)
+stop
 print bout
 eval bout.X_test[3]		# grab array of X for 1st training set
