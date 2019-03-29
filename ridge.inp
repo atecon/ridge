@@ -29,12 +29,15 @@ function bundle default_ridge_opts ()
     # Set default values
     bundle self = null
     scalar self.nlambda = 100		# no. of shrinkage params to check
-    scalar self.lmax = 400			# maximal shrinkage param value    
+    scalar self.lmax = 400			# maximal shrinkage param value
 
     # For gridsearch
     # TODO: use also in-sample based information criteria
     scalar self.n_fc_stats = 5			# Don't change: number of stats getting from fcstats()
-    string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"    
+    string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"
+    
+    scalar self.doCV = 1			# per default the program conducst cross-validation testing
+
     # for cv_model_selection package
     string self.cv_type = "kfold"	# Type of cross-validation: "kfold", "loo"
     scalar self.n_folds = 5			# no. of folds for "kfold"
@@ -46,10 +49,10 @@ end function
 
 
 function scalar get_sel_loss (string metric)
-    /* Helper function returning the entry from the
+/* Helper function returning the entry from the
     vector fcstats() returns */
     if metric == "me"
-        return 1        
+        return 1
     elif metric == "rmse"
         return 2
     elif metric == "mae"
@@ -88,13 +91,13 @@ function bundle ridge (series y "Dep. variable",
     /*=======================*/
     /* Main package function */
     /*=======================*/
-    
+
     # Set up the bundle
     bundle self = default_ridge_opts()
     if exists(opts)
         # override defaults
         self = opts + self
-        
+
         # Seq. of lambda values to check
         #--------------------------------
         #self.nlambda = rows(vec(self.lambdas))
@@ -104,7 +107,7 @@ function bundle ridge (series y "Dep. variable",
 
     # Drop missings
     smpl --no-missing y X
-    
+
     # Put some stuff to the bundle
     #=============================
     series self.y = y
@@ -147,7 +150,7 @@ function bundle ridge (series y "Dep. variable",
     cv_ridge(&self)		# returns the "cv_loss" matrix holding losses obtained by CV
     # Each matrix in "cv_loss" is of dim "n_lambdas by n_folds"
 
-    
+
     # Determine optimally trained model conditional
     # on some loss metric
     #================================================
@@ -155,31 +158,33 @@ function bundle ridge (series y "Dep. variable",
 
 
     # Compute the solution path
+    #===========================
+    stop
     matrix temp = ridge_svd(self.lambdas[i], my, mX)
 
     /*
-    # labels
-    strings self.Xnames = varnames(Xreorder)    
-    rnameset(self.betas, self.Xnames)
-    rnameset(self.tstats, self.Xnames)
+       # labels
+       strings self.Xnames = varnames(Xreorder)
+       rnameset(self.betas, self.Xnames)
+       rnameset(self.tstats, self.Xnames)
     */
     /*
-    if self.printout
-        strings lbl = self.Xnames + defarray("Penalty", "Resid SD")
-        print "Ridge regression results"
-        loop i=1..self.nlambda -q
-            matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-            matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
-            modprint cmat lbl extra
-        endloop
-    endif
+       if self.printout
+       strings lbl = self.Xnames + defarray("Penalty", "Resid SD")
+       print "Ridge regression results"
+       loop i=1..self.nlambda -q
+       matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
+       matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
+       modprint cmat lbl extra
+       endloop
+       endif
     */
 
     # copy to output
     /*
-    return defbundle("lambdas", self.lambdas, "coeffs", self.betas, \
-      "tstats", self.tstats, "vcvs", self.betaCovs, "uhats", self.resids, \
-      "s2s", self.s2s, "Xnames", self.Xnames)      
+       return defbundle("lambdas", self.lambdas, "coeffs", self.betas, \
+       "tstats", self.tstats, "vcvs", self.betaCovs, "uhats", self.resids, \
+       "s2s", self.s2s, "Xnames", self.Xnames)
     */
     return self
 end function
@@ -188,22 +193,22 @@ end function
 
 function bundle get_optimal_ridge (bundle *self)
 
-    /* This function evaluates all computed loss values for a given metric
-    and determines the optimal shrinkage parameter 'lamba'. Fits the model
+/* This function evaluates all computed loss values for a given metric
+   and determines the optimal shrinkage parameter 'lamba'. Fits the model
     and returns its point estimate and additional regression information. */
 
 
-    # Conditional on a selected cross-validation metric, get the optimal 
+    # Conditional on a selected cross-validation metric, get the optimal
     # shrinkage parameter.
     #-------------------------------------------------------------------
     matrix cv = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold
     # Obtain statitics across folds
     matrix cv_loss = meanr(cv[,2:]) ~ sdc((cv[,2:])')'
-    
+
     # Minimize mean(loss)
     scalar rowsel = iminc(cv_loss[,1])
     self.lambda_min = self.lambdas[rowsel]				# 'lambda' minimizing mean(loss)
-    self.loss_min = cv_loss[rowsel,1]					# assosciated loss    
+    self.loss_min = cv_loss[rowsel,1]					# assosciated loss
     # Minimize sd(loss)
     scalar rowsel = iminc(cv_loss[,2])
     self.lambda_min_se = self.lambdas[rowsel]			# 'lambda' minimizing sd(loss)
@@ -211,7 +216,7 @@ function bundle get_optimal_ridge (bundle *self)
 
     # Print CV results
     print_cv_ridge_res(&self)
-    
+
     return self
 end function
 
@@ -219,15 +224,15 @@ end function
 function void plot_loss (bundle *self,
                          string *path[null] "Set path + filename")
     /* Plot the loss function as a function of log(lambda) */
-    
+
     string path = (!exists(path)) ? "display" : path
 
     matrix mat = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold (F1,...Fk)
     matrix se = sdc((mat[,2:])')'
-    mat = meanr(mat[,2:]) ~ (meanr(mat[,2:])+se) ~ (meanr(mat[,2:])-se) ~ log(mat[,1])   
-    
+    mat = meanr(mat[,2:]) ~ (meanr(mat[,2:])+se) ~ (meanr(mat[,2:])-se) ~ log(mat[,1])
+
     scalar ymx = maxc(mat[,2])*1.01
-    
+
     plot mat
         options with-lines fit=none single-yaxis
         printf "set ylabel '%s' font ', 12'", self.loss_type
@@ -249,7 +254,7 @@ end function
 
 
 function void plot_beta (bundle *self,
-                         string *path[null] "Set path + filename")                       
+                         string *path[null] "Set path + filename")
     /* Plot the solution path as a function of log(lambda) */
 
     string path = (!exists(path)) ? "display" : path
@@ -270,26 +275,33 @@ end function
 
 
 function matrices gen_cv_loss_mat (bundle *self)
-    /* Helper function generating an array of 
+/* Helper function generating an array of
     matrices for holding various CV eval. metrics */
     matrices cv_loss = array(self.n_fc_stats)
     loop i=1..self.n_fc_stats -q
         cv_loss[i] = vec(self.lambdas) ~ zeros(self.nlambda, self.n_folds)
     endloop
-    return cv_loss    
-end function    
+    return cv_loss
+end function
 
 
 
 function bundle cv_ridge (bundle *self)
 
-    /* Cross-validation for Ridge estimator
+/* Cross-validation for Ridge estimator
     using the "cv_data_generator" package */
-    
+
+    # Generate array of matrices holding various forecast eval. metrics
+    matrices self.cv_loss = gen_cv_loss_mat(&self)
+
+
     strings cnam = array(1+self.n_folds)
     cnam[1] = "Lambda"
-    
+
+    # Start looping over various training/ test sets
+    #===============================================
     loop fold_loop=1..self.n_folds -q
+
         # string construction
         cnam[1+fold_loop] = sprintf("fold=%d",fold_loop)
 
@@ -298,135 +310,101 @@ function bundle cv_ridge (bundle *self)
         matrix self.mX_train = self.X_train[fold_loop][,2:]
         matrix self.my_test = self.y_test[fold_loop][,2:]
         matrix self.mX_test = self.X_test[fold_loop][,2:]
-        if self.wconst	# Add intercept to test set           
+        if self.wconst	# Add intercept to test set
             self.mX_test = ones(rows(self.mX_test),1) ~ self.mX_test
         endif
 
         # Loop for a given training-set over lambda values
+        #==================================================
+        self.curr_fold = $fold_loop		# temporary scalar
         est_ridge_lambda(&self)			# generates "self.cv_loss" array of matrices
     endloop
 
-    # attache column names
+    # Attache column names
     loop j=1..self.n_fc_stats -q
         cnameset(self.cv_loss[j], cnam)  # array of "n_lambdas by n_folds" matrices holding forecast loss
     endloop
 
+    scalar self.doCV = 0						# as doCV is done, it's not needed anymore!
+    
     return self
 end function
 
 
-function est_ridge_lambda (bundle *self)
-    
+function bundle est_ridge_lambda (bundle *self)
+
     /* Function estimating Ridge for different lambda values */
-    
+
     if self.doCV
-        # Generate array of matrices holding various forecast eval. metrics
-        matrices self.cv_loss = gen_cv_loss_mat(&self)
-        my  = 
+        my  = self.my_train
+        mX = self.mX_train
+        my_test = self.my_test
+        mX_test = self.mX_test
+
     else
         # Case where you don't wan to consider different folds
         # but only loop through different lambda values
         # for a given data set.
-        matrix betas, tstats, resids, s2s, res, temp
-        matrices betaCovs = array(self.nlambda)
-    endif    
-    
+        matrix res = zeros($nobs,1)
+        matrix temp = {}
+
+        # Matrix holder
+        matrix self.betas = zeros(nelem(self.Xtilde), self.nlambda)
+        matrix self.tstats = zeros(nelem(self.Xtilde), self.nlambda)
+        matrix self.resids = zeros($nobs, self.nlambda)
+        matrix self.s2s = zeros(self.nlambda, 1)
+        matrices self.betaCovs = array(self.nlambda)
+
+        my = self.my		# using all data available as passed by user
+        mX = self.mX		# using all data available as passed by user
+    endif
+
     # Loop over shrinkage values
-        loop i=1..self.nlambda -q
+    loop i=1..self.nlambda -q
 
-            # Train the model
-            matrix temp = ridge_svd(self.lambdas[i], my_train, mX_train)
+        # Train the model
+        matrix temp = ridge_svd(self.lambdas[i], my, mX)
 
-            bhat = temp[,1]
+        if self.doCV
+            matrix bhat = temp[,1]
             # rescale using moments of training set only
-            bhat = bhat .* (sdc(my_train) ./ sdc(mX_train)')
-
-            # construct residuals
-            matrix res = my_train - mX_train*bhat 	# original data (w/o const)
-
+            bhat = bhat .* (sdc(my) ./ sdc(mX)')
+            
+            # construct residuals            
+            # FIXME: Use self.y instead of my!!!
+            matrix res = my - mX*bhat 	# original data (w/o const)
+            
             # resids may have non-zero mean: insert the constant term
             if self.wconst
                 bhat = meanc(res) | bhat
             endif
 
-            # Fit the model to test set + compute + store forecast loss
-            matrix mat = fcstats(my_test, mX_test*bhat)
+        else
+            self.betas[,i] = temp[,1]
+            self.betaCovs[i] = temp[, 2:]
+            self.tstats[,i] = self.betas[,i] ./ sqrt(diag(temp[, 2:]))
+
+            # rescale
+            self.betas[,i] = self.betas[,i] .* (self.ysd ./ self.Xsd')
+            self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
+            
+            # construct residuals
+            matrix res = {self.y} - {self.Xtilde} * self.betas[,i] # original data (w/o const)
+            self.resids[,i] = res				# resids may have non-zero mean
+            
+            # estimate residual variance
+            res = cdemean(res)
+            self.s2s[i] = res'res / rows(self.my)
+        endif
+
+        if self.doCV
+            # Fit the model to test set + compute + store forecast/ forecast loss
+            matrix mat = fcstats(my_test, mX_test*bhat)            
             loop j=1..self.n_fc_stats -q 							# ME, RMSE, MAE, MPE, MAPE
-                self.cv_loss[j][i,1+fold_loop] = mat[j]
-            endloop            
-        endloop
-
-
-end function
-
-
-function bundle ridge_gridsearch (bundle *self "Created bundle from calling ridge() before")
-
-    /* This function is supposed to run a grid-search and select the
-    optimal lambda-value for some loss function. Most likely you want
-    to use for y and X observations from the test set. */
-
-    #smpl --no-missing y X
-
-    # store loss values
-    matrix loss = zeros(self.nlambda,1)
-
-    # Compute forecast evaluation statistics for each eta value
-    # Predict and evaluate
-    loop i=1..self.nlambda -q
-        matrix fc = {self.X} * self.betas[,i]		# construct forecast
-        loss[i] = fcstats(self.y, fc)[self.sel_loss]
-        #cnam[i] = sprintf("lambda=%g", b.lambdas[i])
-    endloop
-    #rnameset(FCstat, cnam)
-    scalar pos_lambda = iminc(loss)					# position of lambda minimizing loss
-    scalar self.lambda_opt = self.lambdas[pos_lambda]	# optimal lambda value
-    scalar self.loss_opt = loss[pos_lambda]
-    matrix self.loss = loss
-    matrix self.beta_opt = self.betas[,pos_lambda]		# optimal coefficient vector
-    rnameset(self.beta_opt, self.Xnames)
-
-#    string self.loss_type = loss_type
-    if self.printout
-        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_opt
-        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_opt
-    endif
-    
-    return self
-end function
-
-
-function bundle est_ridge (bundle *self)
-
-    /* Actual computation of ridge and related stats */
-    
-    matrix res = zeros($nobs,1)
-    matrix temp = {}
-    
-    # Matrix holder
-    matrix self.betas = zeros(nelem(self.Xtilde), self.nlambda)
-    matrix self.tstats = zeros(nelem(self.Xtilde), self.nlambda)
-    matrix self.resids = zeros($nobs, self.nlambda)
-    matrix self.s2s = zeros(self.nlambda, 1)
-    matrices self.betaCovs = array(self.nlambda)
-
-    loop i = 1..self.nlambda -q
-        matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX)
-        self.betas[,i] = temp[,1]
-        self.betaCovs[i] = temp[, 2:]
-        self.tstats[,i] = self.betas[,i] ./ sqrt(diag(temp[, 2:]))
+                self.cv_loss[j][i,1+self.curr_fold] = mat[j]
+            endloop
+        endif
         
-        # rescale
-        self.betas[,i] = self.betas[,i] .* (self.ysd ./ self.Xsd')
-        self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
-        
-        # construct residuals
-        matrix res = {self.y} - {self.Xtilde} * self.betas[,i] # original data (w/o const)
-        self.resids[,i] = res				# resids may have non-zero mean
-        
-        # estimate residual variance
-        res = cdemean(res)
-        self.s2s[i] = res'res / rows(self.my)
     endloop
 
     return self

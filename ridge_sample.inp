@@ -75,6 +75,8 @@ print b_ridge
 plot_loss(&b_ridge)#, path)
 stop
 
+lambda_min
+
 
 # Grab optimal stuff
 #====================
