@@ -4,6 +4,8 @@ set verbose off
 include "/home/at/git/ridge/cv_data_generator.inp"
 
 
+# TODO: Der Nutzer passed lediglich EINE Liste oder eine MATRIX statt b.y/ b.X!!
+
 # EXAMPLE
 open australia.gdt -q
 
@@ -14,24 +16,21 @@ list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
 # Drop missing values
 smpl --no-missing LHS RHS
 
-scalar use_matrices = 0
+scalar use_matrices = 1
 
 bundle b = null
 
 if use_matrices
-    matrix X = {RHS}
-    matrix y = {LHS}
+    matrix X = {LHS} ~ {RHS}
     genr index
     matrix mindex = {index}
     b.X = X
-    b.y = y
     b.index = mindex
     
 else
-    b.X = RHS
-    b.y = LHS
+    list b.X = LHS RHS
 endif
 
 bundle bout = CrossValidation(b)
 print bout
-eval bout.X_test[1]		# grab array of X for 1st training set
+eval bout.X_test[3]		# grab array of X for 1st training set
