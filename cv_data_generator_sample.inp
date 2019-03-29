@@ -14,7 +14,7 @@ list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
 # Drop missing values
 smpl --no-missing LHS RHS
 
-scalar use_matrices = 1
+scalar use_matrices = 0
 
 bundle b = null
 
@@ -34,5 +34,4 @@ endif
 
 bundle bout = CrossValidation(b)
 print bout
-eval bout.X_train[1]		# grab array of X for 1st training set
-#print L -o
+eval bout.X_test[1]		# grab array of X for 1st training set

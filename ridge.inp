@@ -3,6 +3,25 @@
 
 include "/home/at/git/ridge/cv_data_generator.inp"
 
+function void print_cv_ridge_res (bundle *self)
+    if self.printout
+        printf "\n**************************************************************************\n"
+        printf "\t\tCross-validation results for Ridge estimator\n"
+        printf "\nCV type: \t\t'%s'\n", self.cv_type
+        printf "'lambda'-values eval.: \t%d\n", self.nlambda
+        printf "Max. 'lambda'-value: \t%.5f\n", self.lmax
+        printf "Loss metric: \t\t'%s'\n", self.loss_type
+        printf "\nOptimal shrinkage parameter ('lambda') minimizing loss:\n"
+        printf "'lambda_min': \t\t%.5f\n", self.lambda_min
+        printf "'log(lambda_min)': \t%.5f\n", log(self.lambda_min)
+        printf "%s: \t\t\t%.5f\n", self.loss_type, self.loss_min
+        printf "\nOptimal shrinkage parameter ('lambda') with smallest S.E. of loss:\n"
+        printf "'lambda_min_se': \t%.5f\n", self.lambda_min_se
+        printf "'log(lambda_min_se)': \t%.5f\n", log(self.lambda_min_se)
+        printf "%s: \t\t\t%.5f\n", self.loss_type, self.loss_min_se
+        printf "\n**************************************************************************\n"
+    endif
+end function
 
 
 function bundle default_ridge_opts ()
@@ -10,20 +29,12 @@ function bundle default_ridge_opts ()
     # Set default values
     bundle self = null
     scalar self.nlambda = 100		# no. of shrinkage params to check
-    scalar self.lmax = 400			# maximal shrinkage param value
-    matrix self.lambdas = vec(seq(0.1, self.lmax, self.lmax/self.nlambda))
+    scalar self.lmax = 400			# maximal shrinkage param value    
 
     # For gridsearch
     # TODO: use also in-sample based information criteria
-    string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"
-    if self.loss_type == "rmse"
-        scalar self.sel_loss = 2
-    elif self.loss_type == "mae"
-        scalar self.sel_loss = 3
-    elif self.loss_type == "mape"
-        scalar self.sel_loss = 5
-    endif
-    
+    scalar self.n_fc_stats = 5			# Don't change: number of stats getting from fcstats()
+    string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"    
     # for cv_model_selection package
     string self.cv_type = "kfold"	# Type of cross-validation: "kfold", "loo"
     scalar self.n_folds = 5			# no. of folds for "kfold"
@@ -31,6 +42,23 @@ function bundle default_ridge_opts ()
     scalar self.printout = 1		# Print results (default: True)
 
     return self
+end function
+
+
+function scalar get_sel_loss (string metric)
+    /* Helper function returning the entry from the
+    vector fcstats() returns */
+    if metric == "me"
+        return 1        
+    elif metric == "rmse"
+        return 2
+    elif metric == "mae"
+        return 3
+    elif metric == "mape"
+        return 5
+    else
+        funcerr "The loss metric you have called is unknown."
+    endif
 end function
 
 
@@ -66,7 +94,12 @@ function bundle ridge (series y "Dep. variable",
     if exists(opts)
         # override defaults
         self = opts + self
-        self.nlambda = rows(vec(self.lambdas))
+        
+        # Seq. of lambda values to check
+        #--------------------------------
+        #self.nlambda = rows(vec(self.lambdas))
+        self.lambdas = vec(seq(0.1, self.lmax, self.lmax/self.nlambda))
+        self.sel_loss = get_sel_loss(self.loss_type)
     endif
 
     # Drop missings
@@ -76,7 +109,7 @@ function bundle ridge (series y "Dep. variable",
     #=============================
     series self.y = y
     list self.X = X
-    list self.Xtilde = X - const    
+    list self.Xtilde = X - const
     # check for constant
     scalar self.wconst = nelem(self.Xtilde) < nelem(self.X) ? 1 : 0
 
@@ -90,7 +123,7 @@ function bundle ridge (series y "Dep. variable",
 
 
     # Obtain test/train datasets for cross-validation
-    # We use the 2cv_data_generator" package for this
+    # We use the "cv_data_generator" package for this
     #================================================
     bundle bcv = null
     bcv.X = mX
@@ -102,48 +135,34 @@ function bundle ridge (series y "Dep. variable",
     bcv.cv_type = self.cv_type
     bcv.n_folds = self.n_folds
     bundle bcv = CrossValidation(bcv)
-    # store output in self
+    # Grab test and training sets stored in array of matrices
     self.foldsize = bcv.foldsize
     self.y_test = bcv.y_test
     self.y_train = bcv.y_train
     self.X_test = bcv.X_test
     self.X_train = bcv.X_train
 
-
     # Run cross-validation
     #======================
-    cv_ridge(&self)		# returns the "cv_loss" 5-dim. array
-    # Each matrix in cv_loss is of dim "n_lambdas by n_folds" matrices holding forecast losses
+    cv_ridge(&self)		# returns the "cv_loss" matrix holding losses obtained by CV
+    # Each matrix in "cv_loss" is of dim "n_lambdas by n_folds"
 
     
     # Determine optimally trained model conditional
     # on some loss metric
     #================================================
     get_optimal_ridge(&self)
-    print self
-    stop
-    
-    # matrix cv_mean_loss = log(self.lambdas) ~ meanr(self.cv_loss[self.sel_loss][,2:])
-
-    
-    
-
-    
 
 
+    # Compute the solution path
+    matrix temp = ridge_svd(self.lambdas[i], my, mX)
 
-
-
-
-
-
-
-
-
+    /*
     # labels
     strings self.Xnames = varnames(Xreorder)    
     rnameset(self.betas, self.Xnames)
     rnameset(self.tstats, self.Xnames)
+    */
     /*
     if self.printout
         strings lbl = self.Xnames + defarray("Penalty", "Resid SD")
@@ -167,7 +186,7 @@ end function
 
 
 
-function bundle get_optimal_ridge (bundle *self "Created bundle from calling ridge() before")
+function bundle get_optimal_ridge (bundle *self)
 
     /* This function evaluates all computed loss values for a given metric
     and determines the optimal shrinkage parameter 'lamba'. Fits the model
@@ -178,7 +197,7 @@ function bundle get_optimal_ridge (bundle *self "Created bundle from calling rid
     # shrinkage parameter.
     #-------------------------------------------------------------------
     matrix cv = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold
-    # Obtain statitics across folds    
+    # Obtain statitics across folds
     matrix cv_loss = meanr(cv[,2:]) ~ sdc((cv[,2:])')'
     
     # Minimize mean(loss)
@@ -190,26 +209,71 @@ function bundle get_optimal_ridge (bundle *self "Created bundle from calling rid
     self.lambda_min_se = self.lambdas[rowsel]			# 'lambda' minimizing sd(loss)
     self.loss_min_se = cv_loss[rowsel,2]				# 'lambda' minimizing sd(loss)
 
-
-    # TODO: add more informative printout considering both criteria lamba_min/ lambda_min_se
-    if self.printout
-        printf "\n*** '%s' minimized for lambda = %.2f ***\n", self.loss_type, self.lambda_min
-        printf "*** Loss ('%s') is = %.5f ***\n", self.loss_type, self.loss_min
-    endif
+    # Print CV results
+    print_cv_ridge_res(&self)
     
     return self
 end function
 
 
+function void plot_loss (bundle *self,
+                         string *path[null] "Set path + filename")
+    /* Plot the loss function as a function of log(lambda) */
+    
+    string path = (!exists(path)) ? "display" : path
 
+    matrix mat = self.cv_loss[self.sel_loss]	# lambdas ~ loss_for_each_fold (F1,...Fk)
+    matrix se = sdc((mat[,2:])')'
+    mat = meanr(mat[,2:]) ~ (meanr(mat[,2:])+se) ~ (meanr(mat[,2:])-se) ~ log(mat[,1])   
+    
+    scalar ymx = maxc(mat[,2])*1.01
+    
+    plot mat
+        options with-lines fit=none single-yaxis
+        printf "set ylabel '%s' font ', 12'", self.loss_type
+        printf "set xlabel 'log(lambda)' font ', 12'"
+        literal set linetype 1 lc rgb "red" lw 2
+        literal set linetype 2 lc rgb "grey" lw 2 pt 3
+        literal set linetype 3 lc rgb "grey" lw 2 pt 3
+        printf "set yrange[:%g]", ymx
+        printf "set key outside right"
+        # Vertical lines indicating optimal shrinkage value
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'blue' lw 1", log(self.lambda_min), log(self.lambda_min)
+        printf "set label 'λ_min' at %g,graph(0.3,0.5)", log(self.lambda_min)
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'orange' lw 1", log(self.lambda_min_se), log(self.lambda_min_se)
+        printf "set label 'λ_min_se' at %g,graph(0.3,0.4)", log(self.lambda_min_se)
+    end plot --output="@path"
+end function
+
+
+function void plot_beta (bundle *self,
+                         string *path[null] "Set path + filename")                       
+    /* Plot the solution path as a function of log(lambda) */
+
+    string path = (!exists(path)) ? "display" : path
+
+    matrix mat = self.betas' ~ log(self.lambdas)
+    plot mat
+        options with-lines fit=none single-yaxis
+        printf "set ylabel 'Coefficients' font ', 12'"
+        printf "set xlabel 'log(lambda)' font ', 12'"
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
+          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+        printf "set key outside below"
+        literal set grid
+    end plot --output="@path"
+end function
 
 
 function matrices gen_cv_loss_mat (bundle *self)
-    /* helper function generating an array of 
+    /* Helper function generating an array of 
     matrices for holding various CV eval. metrics */
-    scalar n_stats = 5			# ME, RMSE, MAE, MPE, MAPE    
-    matrices cv_loss = array(n_stats)
-    loop i=1..n_stats -q
+    matrices cv_loss = array(self.n_fc_stats)
+    loop i=1..self.n_fc_stats -q
         cv_loss[i] = vec(self.lambdas) ~ zeros(self.nlambda, self.n_folds)
     endloop
     return cv_loss    
@@ -220,10 +284,8 @@ end function
 function bundle cv_ridge (bundle *self)
 
     /* Cross-validation for Ridge estimator
-    using the cv_data_generator package */
+    using the "cv_data_generator" package */
     
-    # Generate array of matrices holding various forecast eval. metrics
-    matrices cv_loss = gen_fc_stats_mat(&self)    
     strings cnam = array(1+self.n_folds)
     cnam[1] = "Lambda"
     
@@ -232,22 +294,51 @@ function bundle cv_ridge (bundle *self)
         cnam[1+fold_loop] = sprintf("fold=%d",fold_loop)
 
         # Set up the training and test set
-        matrix my_train = self.y_train[fold_loop][,2:]
-        matrix mX_train = self.X_train[fold_loop][,2:]
-        matrix my_test = self.y_test[fold_loop][,2:]
-        matrix mX_test = self.X_test[fold_loop][,2:]
-        if self.wconst	# Add intercept to test set            
-            mX_test = ones(rows(mX_test),1) ~ mX_test
+        matrix self.my_train = self.y_train[fold_loop][,2:]
+        matrix self.mX_train = self.X_train[fold_loop][,2:]
+        matrix self.my_test = self.y_test[fold_loop][,2:]
+        matrix self.mX_test = self.X_test[fold_loop][,2:]
+        if self.wconst	# Add intercept to test set           
+            self.mX_test = ones(rows(self.mX_test),1) ~ self.mX_test
         endif
-        
-        # Loop over shrinkage values
-        loop i = 1..self.nlambda -q
+
+        # Loop for a given training-set over lambda values
+        est_ridge_lambda(&self)			# generates "self.cv_loss" array of matrices
+    endloop
+
+    # attache column names
+    loop j=1..self.n_fc_stats -q
+        cnameset(self.cv_loss[j], cnam)  # array of "n_lambdas by n_folds" matrices holding forecast loss
+    endloop
+
+    return self
+end function
+
+
+function est_ridge_lambda (bundle *self)
+    
+    /* Function estimating Ridge for different lambda values */
+    
+    if self.doCV
+        # Generate array of matrices holding various forecast eval. metrics
+        matrices self.cv_loss = gen_cv_loss_mat(&self)
+        my  = 
+    else
+        # Case where you don't wan to consider different folds
+        # but only loop through different lambda values
+        # for a given data set.
+        matrix betas, tstats, resids, s2s, res, temp
+        matrices betaCovs = array(self.nlambda)
+    endif    
+    
+    # Loop over shrinkage values
+        loop i=1..self.nlambda -q
 
             # Train the model
             matrix temp = ridge_svd(self.lambdas[i], my_train, mX_train)
 
             bhat = temp[,1]
-            # rescale
+            # rescale using moments of training set only
             bhat = bhat .* (sdc(my_train) ./ sdc(mX_train)')
 
             # construct residuals
@@ -258,23 +349,15 @@ function bundle cv_ridge (bundle *self)
                 bhat = meanc(res) | bhat
             endif
 
-            # Fit the model to test set + compute forecast loss
+            # Fit the model to test set + compute + store forecast loss
             matrix mat = fcstats(my_test, mX_test*bhat)
-            loop j=1..5 -q 							# ME, RMSE, MAE, MPE, MAPE
-                cv_loss[j][i,1+fold_loop] = mat[j]
-            endloop
+            loop j=1..self.n_fc_stats -q 							# ME, RMSE, MAE, MPE, MAPE
+                self.cv_loss[j][i,1+fold_loop] = mat[j]
+            endloop            
         endloop
-    endloop
-    
-    # attache column names
-    loop j=1..5 -q
-        cnameset(cv_loss[j], cnam)
-        self.cv_loss = cv_loss	# array of "n_lambdas by n_folds" matrices holding forecast loss
-    endloop
-        
-    return self
-end function
 
+
+end function
 
 
 function bundle ridge_gridsearch (bundle *self "Created bundle from calling ridge() before")
@@ -423,38 +506,3 @@ function matrix ridge_aux (scalar lambda,
 end function
 
 
-function void plot_loss (bundle *self,
-                         string path "Set path or 'display'")
-    # Plot the loss function for each iteration
-    # TODO: glmnet also computes CIs based on CV-results
-    
-    matrix mat = ( vec(self.loss) ~ log(vec(self.lambdas)) )
-    scalar ymx = maxc(mat[,1])*1.02
-    plot mat
-        options with-lines fit=none
-        printf "set ylabel '%s' font ', 12'", self.loss_type
-        printf "set xlabel 'log(lambda)' font ', 12'"
-        literal set linetype 1 lc rgb "red" lw 2
-        literal set linetype 2 lc rgb "black" lw 2 pt 3
-        printf "set yrange[:%g]", ymx
-        printf "set key outside right"
-        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-        nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-    end plot --output="@path"
-end function
-
-
-function void plot_beta (bundle *self,
-                         string path "Set path or 'display'")
-    # Plot the solution path as a function of log(lambda)
-    matrix mat = self.betas' ~ log(self.lambdas)
-    plot mat
-        options with-lines fit=none
-        printf "set ylabel 'Coefficients' font ', 12'"
-        printf "set xlabel 'log(lambda)' font ', 12'"
-        printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-        printf "set key outside below"
-        literal set grid
-    end plot --output="@path"
-end function
