@@ -4,7 +4,7 @@ clear
 #include ridge.gfn --force
 include /home/at/git/ridge/ridge.inp		# SET PATH
 
-scalar runEX = 2 		# select an example
+scalar runEX = 3 		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -34,12 +34,12 @@ elif runEX==2
     
 elif runEX==3
 
-    nulldata 200
+    nulldata 1000
     set seed 1234
     setobs 1 1 --time-series
     series e = normal()
     series LHS = 1
-    series LHS = 0.8*LHS(-1) - 0.4*LHS(-2) + e
+    series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + e
     matrix X = mnormal($nobs,50)
     list RHS = LHS(-1 to -2)
     loop i=1..cols(X) -q
@@ -63,7 +63,7 @@ bundle opts = null
 #matrix opts.lambdas = {0.6,5}
 # Loss function for CV (optional, default "rmse")
 #scalar opts.lmax = 20
-string opts.loss_type = "mae"		# 'me', 'rmse', 'mae', 'mape'
+string opts.loss_type = "rmse"		# 'me', 'rmse', 'mae', 'mape'
 
 # Run training and evaluation using cross-validation
 #====================================================
@@ -71,28 +71,22 @@ bundle b_ridge = ridge(LHS, RHS, opts)
 print b_ridge
 
 # Plot loss as a function of lambda
-#string path = "display"
-plot_loss(&b_ridge)#, path)
+plot_loss(&b_ridge)
+
+# Plot solution path
+plot_beta(&b_ridge)
 stop
-
-lambda_min
-
-
-# Grab optimal stuff
-#====================
-#ridge_gridsearch(&b_ridge)
-
-
 
 # Grab coeff. conditional on optimal lambda
 #==========================================
-eval b_ridge.beta_opt
+#eval b_ridge.beta_opt
 
-
-# Plot solution path
-string path = "display"
-plot_beta(&b_ridge, path)
-
+TODOs:
+-----
+1) Grab beta_opt_min + beta_opt_min_se
+2) Grab se_beta_opt_min + se_beta_opt_min_se
+3) Print model estimates
+4) Clear final bundle
 stop
 
 

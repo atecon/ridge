@@ -136,7 +136,7 @@ function bundle ridge (series y "Dep. variable",
     genr index
     matrix mindex = {index}
     bcv.index = mindex
-    /*
+    
     bcv.X = mX
     bundle bcv = CvDataGenerator(bcv)
     # Grab test and training sets stored in array of matrices
@@ -148,15 +148,12 @@ function bundle ridge (series y "Dep. variable",
     bundle bcv = CvDataGenerator(bcv)
     self.y_test = bcv.X_test
     self.y_train = bcv.X_train
-    */
+
     # Now for 'y' (non-standardized=original data)
     list bcv.X = y
     bundle bcv = CvDataGenerator(bcv)
     self.yraw_test = bcv.X_test
     self.yraw_train = bcv.X_train
-    eval self.yraw_test
-    eval self.yraw_train
-    stop
 
     # Run cross-validation
     #======================
@@ -277,10 +274,12 @@ function void plot_beta (bundle *self,
         printf "set ylabel 'Coefficients' font ', 12'"
         printf "set xlabel 'log(lambda)' font ', 12'"
         printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
+          nohead lc rgb 'blue' lw 1", log(self.lambda_min), log(self.lambda_min)
+        printf "set label 'λ_min' at %g,graph(0.3,0.5)", log(self.lambda_min)
         printf "set arrow from %g,graph(0,0) to %g,graph(1,1) \
-          nohead lc rgb 'blue' lw 1.5", log(self.lambda_opt), log(self.lambda_opt)
-        printf "set key outside below"
+          nohead lc rgb 'orange' lw 1", log(self.lambda_min_se), log(self.lambda_min_se)
+        printf "set label 'λ_min_se' at %g,graph(0.3,0.4)", log(self.lambda_min_se)
+        printf "set key right"
         literal set grid
     end plot --output="@path"
 end function
@@ -324,7 +323,9 @@ function bundle cv_ridge (bundle *self)
         matrix self.mX_test = self.X_test[fold_loop][,2:]
         if self.wconst	# Add intercept to test set
             self.mX_test = ones(rows(self.mX_test),1) ~ self.mX_test
-        endif
+        endif        
+        self.myraw_train = self.yraw_train[fold_loop][,2:]
+        self.myraw_test = self.yraw_test[fold_loop][,2:]
 
         # Loop for a given training-set over lambda values
         #==================================================
@@ -353,16 +354,16 @@ function bundle est_ridge_lambda (bundle *self)
         my_test = self.my_test
         mX_test = self.mX_test
 
+        yraw = self.myraw_train
+        yraw_test = self.myraw_test
+
     else
         # Case where you don't wan to consider different folds
         # but only loop through different lambda values
         # for a given data set.
       
         my = self.my		# using all data available as passed by user
-        mX = self.mX		# using all data available as passed by user
-
-
-        matrix res = zeros(rows(my),1)
+        mX = self.mX		# using all data available as passed by user        
 
         # Matrix holder
         scalar k = (self.wconst==1) ? (nelem(self.Xtilde)+1) : nelem(self.Xtilde)
@@ -386,7 +387,7 @@ function bundle est_ridge_lambda (bundle *self)
             
             # construct residuals            
             # FIXME: Use self.y instead of my!!!
-            matrix resids = my - mX*bhat 	# original data (w/o const)
+            matrix resids = yraw - mX*bhat 	# original data (w/o const)
             
             # resids may have non-zero mean: insert the constant term
             if self.wconst
@@ -418,7 +419,7 @@ function bundle est_ridge_lambda (bundle *self)
 
         if self.doCV
             # Fit the model to test set + compute + store forecast/ forecast loss
-            matrix mat = fcstats(my_test, mX_test*bhat)            
+            matrix mat = fcstats(yraw_test, mX_test*bhat)            
             loop j=1..self.n_fc_stats -q 							# ME, RMSE, MAE, MPE, MAPE
                 self.cv_loss[j][i,1+self.curr_fold] = mat[j]
             endloop
