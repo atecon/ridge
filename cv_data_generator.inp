@@ -1,41 +1,26 @@
 /*
-   Package for generating datasets for cross-validation
-   purposes.
 
+   CV DATA GENERATOR
 
-   written by: Artur Tarassow (atecon@posteo.de)
+   Package for generating datasets for cross-validation purposes.
+
+   Learning parameters of a prediction function is a major objective. In order to avoid
+   over-fitting, the model is trained on a different data sample (the 'training set')
+   and evaluated out-of-sample on a so called 'test set'. This approach is known as
+   cross-validation (CV).
+
+   This package comprises different approaches of dividing the raw data set into
+   a training and test set, respectively, depending on the nature of the underlying data.
+   
+   An nice overview can be accessed here: 
+   https://scikit-learn.org/stable/modules/cross_validation.html
+
+   The separated data sets are stored in array of matrices, which can be read-in for the
+   original model training and evaluation.   
+
+   written by: Artur Tarassow (atecon@posteo.de; https://github.com/atecon)
 
 */
-
-
-function bundle default_cv_opts (void)
-
-    # Set default values
-    bundle self = null
-    string self.cv_type = "kfold"	# "kfold", "rep_kfold", "loo", etc...
-
-    scalar self.n_folds = 5			# divide sample into k groups of samples
-
-    return self
-end function
-
-
-function void check_bundle (bundle *self)
-    /* Some initial checks for bundle completeness */
-        
-    if !inbundle(self, "X")
-        funcerr "Provide a list or matrix with data entitled 'X'."
-    endif
-    if typeof(self.X)==3		# if matrix
-        if !inbundle(self, "index")
-            funcerr "Provide a vector holding index observations values (via 'genr index') named 'index'."
-        elif inbundle(self, "index")
-            if typeof(self.índex)!=3
-                funcerr "Make sure your object 'index' is of type matrix (row vector)."
-            endif            
-        endif
-    endif
-end function
 
 
 function bundle CvDataGenerator (bundle b)
@@ -56,24 +41,62 @@ function bundle CvDataGenerator (bundle b)
 
     # Initial checks
     #===============
-#    check_bundle(&self)
+    check_bundle(&self)
 
 
     # Drop missings
+    #===============
     # TODO: think about how to handle NAs
     #    smpl --no-missing y X
-   
+
+    # Generate an observation index
+    #===============================
     if !inbundle(self, "index") && (typeof(self.X)==7 || typeof(self.X)==2)
         genr index
         self.index = index		# index series for checking that values are related to the right unit
     endif
 
     # Call evaluation method
+    #=======================
     if self.cv_type=="kfold"
         kfold(&self)
     endif
 
     return self
+end function
+
+
+function bundle default_cv_opts (void)    
+    # Set default values of the bundle
+    bundle self = null    
+    string self.cv_type = "kfold"	# "kfold", "rep_kfold", "loo", etc...
+    if self.cv_type != "loo"
+        scalar self.n_folds = 5			# divide sample into k groups of samples
+    else
+        scalar self.n_folds = 
+    endif    
+
+
+
+    return self
+end function
+
+
+function void check_bundle (bundle *self)
+    /* Some initial checks for bundle completeness */
+
+    if !inbundle(self, "X")
+        funcerr "Provide a list or matrix with data entitled 'X'."
+    endif
+    if typeof(self.X)==3		# if matrix
+        if !inbundle(self, "index")
+            funcerr "Provide a vector holding index observations values (via 'genr index') named 'index'."
+        elif inbundle(self, "index")
+            if typeof(self.index)!=3
+                funcerr "Make sure your object 'index' is of type matrix (row vector)."
+            endif
+        endif
+    endif
 end function
 
 
@@ -85,7 +108,7 @@ function bundle kfold (bundle *self)
    Split dataset into k consecutive folds (without shuffling by default).
    Each fold can be used once as a validation while the k - 1 remaining
    folds form the training set.
-   
+
    See: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.KFold.html
     */
 
@@ -94,8 +117,8 @@ function bundle kfold (bundle *self)
         series index = self.index
     else
         matrix index  = self.index
-    endif    
-    
+    endif
+
     # Arrays holding samples
     matrices self.X_train = array(self.n_folds)
     matrices self.X_test = array(self.n_folds)
@@ -104,6 +127,8 @@ function bundle kfold (bundle *self)
     scalar T = (typeof(X)==7) ? $nobs : rows(X)
     scalar self.foldsize = int( T/self.n_folds )
     scalar rest = T - self.foldsize		# no. of remainder obs
+    rest
+    stop
 
     # initial test set
     scalar start = min(index)
@@ -119,9 +144,9 @@ function bundle kfold (bundle *self)
             smpl X --no-missing
             active_set = 1						# don't drop
             self.X_test[i] = {index} ~ {X}
-            
+
         else					# For matrix-based approach
-            matrix active_set = (index.>=start && index.<=ende)            
+            matrix active_set = (index.>=start && index.<=ende)
             self.X_test[i] = selifr(index,active_set) ~ selifr(X,active_set)
         endif
 
@@ -131,12 +156,12 @@ function bundle kfold (bundle *self)
             smpl X --no-missing
             self.X_train[i] = {index} ~ {X}
             smpl full
-            
+
         else
             active_set = (active_set.=1) ? 0 : 1				# select training set
             self.X_train[i] = selifr(index,active_set) ~ selifr(X,active_set)
-        endif                
-        
+        endif
+
         # update start/ ende
         start += self.foldsize
         ende = start + self.foldsize-1
