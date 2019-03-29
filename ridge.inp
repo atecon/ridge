@@ -1,7 +1,8 @@
 
 
+# Package required
+include CvDataGenerator.gfn --force
 
-include "/home/at/git/ridge/cv_data_generator.inp"
 
 function void print_cv_ridge_res (bundle *self)
     if self.printout

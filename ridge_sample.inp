@@ -2,7 +2,10 @@ set verbose off
 clear 
 
 #include ridge.gfn --force
-include /home/at/git/ridge/ridge.inp		# SET PATH
+
+string wd = "/home/at/git/ridge"
+
+include "@wd/ridge.inp"		# SET PATH
 
 scalar runEX = 3		# select an example
 
@@ -27,7 +30,7 @@ if runEX==1
     
 elif runEX==2
     # Dataset from glmnet
-    open "/home/at/git/ridge/glmnet_QSE.csv" --quiet  --preserve
+    open "@wd/glmnet_QSE.csv" --quiet  --preserve
     #setobs 1 1 --special-time-series
     setobs 1 1 --cross-section
 
@@ -36,7 +39,7 @@ elif runEX==2
     RHS -= LHS
     
 elif runEX==3
-
+    # SIMULATION
     nulldata 500
     set seed 1234
     setobs 1 1 --time-series
@@ -44,7 +47,7 @@ elif runEX==3
     series LHS = 1
     series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + e
     matrix X = mnormal($nobs,50)
-    list RHS = const LHS(-1 to -2)
+    list RHS = const LHS(-1 to -6)
     loop i=1..cols(X) -q
         series S$i = X[,i]
         RHS += S$i
@@ -62,7 +65,7 @@ bundle opts = null
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
 string opts.loss_type = "rmse"		# 'me', 'rmse' (default), 'mae', 'mape'
-string opts.cv_type = "loo"
+#string opts.cv_type = "kfold"			# 'kfold' (default), 'loo'
 
 # Run training and evaluation using cross-validation
 #====================================================
