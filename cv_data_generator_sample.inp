@@ -4,35 +4,40 @@ set verbose off
 include "/home/at/git/ridge/cv_data_generator.inp"
 
 
-# TODO: Der Nutzer passed lediglich EINE Liste oder eine MATRIX statt b.y/ b.X!!
-
 # EXAMPLE
 open australia.gdt -q
 
-# define the variables
+# Define variables
 series LHS = ldiff(PAU)
 list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+list L = LHS RHS
 
 # Drop missing values
-smpl --no-missing LHS RHS
+smpl --no-missing L
 
-scalar use_matrices = 1
+# Select sample: 
+scalar use_matrices = 1			# 0: pass a list, 1: pass a matrix
 
+# Initialize empty bundle
 bundle b = null
 
 if use_matrices
-    matrix X = {LHS} ~ {RHS}
-    genr index
+    matrix X = {L}
+    genr index					# when using matrices, you must pass a index vector
     matrix mindex = {index}
     b.X = X
-    b.index = mindex
-    
+    b.index = mindex    
 else
-    list b.X = LHS RHS
+    list b.X = L
 endif
 
-b.cv_type = "loo"				# 'kfold', 'loo'
+# Select cross-validation type (optional)
+#b.cv_type = "loo"				# 'kfold' (default), 'loo'
+
+# Run 
 bundle bout = CvDataGenerator(b)
-stop
 print bout
-eval bout.X_test[3]		# grab array of X for 1st training set
+
+# Print training + test datasets stored as matrices
+eval bout.X_train[2]		# grab array of X for some training set
+eval bout.X_test[2]			# grab array of X for some test set
