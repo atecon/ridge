@@ -7,7 +7,7 @@ string wd = "/home/at/git/ridge"
 
 include "@wd/ridge.inp"		# SET PATH
 
-scalar runEX = 3		# select an example
+scalar runEX = 2		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -23,7 +23,7 @@ if runEX==1
     
     # define the variables
     series LHS = ldiff(PAU)
-    list RHS = const LHS(-1 to -2) ldiff(PUS) IUS(-1 to -2)  IAU(-1 to -2)
+    list RHS = const LHS(-1 to -2) IUS(-1 to -2)  IAU(-1 to -2)
     
     ols LHS RHS
 
@@ -31,7 +31,7 @@ if runEX==1
 elif runEX==2
     # Dataset from glmnet
     open "@wd/glmnet_QSE.csv" --quiet  --preserve
-    #setobs 1 1 --special-time-series
+    setobs 1 1 --special-time-series
     setobs 1 1 --cross-section
 
     rename X1 LHS
@@ -46,13 +46,12 @@ elif runEX==3
     series e = normal()
     series LHS = 1
     series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + e
-    matrix X = mnormal($nobs,50)
-    list RHS = const LHS(-1 to -6)
+    matrix X = mnormal($nobs,25)		# further exogenous
+    list RHS = const LHS(-1 to -6)		# arbtrary lags of the endogenous
     loop i=1..cols(X) -q
         series S$i = X[,i]
         RHS += S$i
-    endloop
-    
+    endloop    
 endif
 
 # run the main function with default values
@@ -64,8 +63,8 @@ bundle opts = null
 # Loss function for CV (optional, default "rmse")
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
-string opts.loss_type = "rmse"		# 'me', 'rmse' (default), 'mae', 'mape'
-#string opts.cv_type = "kfold"			# 'kfold' (default), 'loo'
+string opts.loss_type = "mape"		# 'me', 'rmse' (default), 'mae', 'mape'
+string opts.cv_type = "rolwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
 
 # Run training and evaluation using cross-validation
 #====================================================
@@ -79,14 +78,10 @@ plot_beta(&b_ridge)
 
 # Grab coeff. conditional on optimal lambda
 #==========================================
-#eval b_ridge.beta_opt
-
-TODOs:
------
-4) Clear final bundle
-stop
+eval b_ridge.beta_min
 
 
+/* DEPRECATED?
 
 # compare with the (computationally) naive alternative
 # (matrix-based function)
@@ -110,3 +105,4 @@ eval ridge_svd(lambdas[1], my, mX)[,1]
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge
+*/
