@@ -63,7 +63,7 @@ bundle opts = null
 # Loss function for CV (optional, default "rmse")
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
-string opts.loss_type = "mape"		# 'me', 'rmse' (default), 'mae', 'mape'
+string opts.loss_type = "mape"			# 'me', 'rmse' (default), 'mae', 'mape'
 string opts.cv_type = "rolwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
 
 # Run training and evaluation using cross-validation

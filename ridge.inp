@@ -1,8 +1,17 @@
 # Package required
-include CvDataSplitter.gfn --force
+catch include CvDataSplitter.gfn --force
+if !$error
+    printf "\nInfo: Additional package 'CvDataSplitter' loaded.\n"
+else
+    catch pkg install CvDataSplitter
+    if $error
+        funcerr "Additional required package 'CvDataSplitter' could not be loaded.
+    endif
+    include CvDataSplitter.gfn --force
+endif
 
 
-function void print_cv_ridge_res (bundle *self)
+function void printCvRidgeRes (bundle *self)
     if self.printout
         printf "\n**************************************************************************\n"
         printf "\t\tCross-validation results for Ridge estimator\n"
@@ -24,23 +33,23 @@ function void print_cv_ridge_res (bundle *self)
 end function
 
 
-function bundle default_ridge_opts (void)
+function bundle defaultRidgeOpts (void)
 
     # Set default values
     bundle self = null
-    scalar self.nlambda = 100		# no. of shrinkage params to check
+    scalar self.nlambda = 100		# no. of shrinkage params to evaluate
     scalar self.l_min = 0.01		# minimum shrinkage param value
     scalar self.l_max = 400			# maximal shrinkage param value
 
     # For gridsearch
-    # TODO: use also in-sample based information criteria
+    # TODO: use also in-sample based information criteria -- once it's clear how to compute these for ridge
     scalar self.n_fc_stats = 5			# Don't change: number of stats getting from fcstats()
     string self.loss_type = "rmse"		# Loss function: 'rmse', 'mae', 'mape'"
 
     scalar self.doCV = 1			# per default the program conducst cross-validation testing
 
     # for cv_model_selection package
-    string self.cv_type = "kfold"	# Type of cross-validation: "kfold", "loo", "rolwin", "recwin"
+    string self.cv_type = "kfold"	# Type of cross-validation (as supported by CvDataSplitter): "kfold", "loo", "rolwin", "recwin"
     scalar self.n_folds = 5			# no. of folds for "kfold"
     #scalar self.win_size = 30		# optional: length of (initial) window for "rolwin", "recwin"
 
@@ -50,7 +59,7 @@ function bundle default_ridge_opts (void)
 end function
 
 
-function scalar get_sel_loss (string metric)
+function scalar getSelLoss (string metric)
 /* Helper function returning the entry from the
     vector fcstats() returns */
     if metric == "me"
@@ -95,7 +104,7 @@ function bundle ridge (series y "Dep. variable",
     /*=======================*/
 
     # Set up the bundle
-    bundle self = default_ridge_opts()
+    bundle self = defaultRidgeOpts()
     if exists(opts)
         # override defaults
         self = opts + self
@@ -104,7 +113,7 @@ function bundle ridge (series y "Dep. variable",
         #--------------------------------
         #self.nlambda = rows(vec(self.lambdas))
         self.lambdas = vec(seq(self.l_min, self.l_max, self.l_max/self.nlambda))
-        self.sel_loss = get_sel_loss(self.loss_type)
+        self.sel_loss = getSelLoss(self.loss_type)
     endif
 
     # Drop missings
@@ -129,7 +138,7 @@ function bundle ridge (series y "Dep. variable",
 
 
     # Obtain test/train datasets for cross-validation
-    # We use the "cv_data_generator" package for this
+    # We use the "CvDataSplitter" package for this
     #================================================
     bundle bcv = null
     # further options for cv
@@ -176,19 +185,19 @@ function bundle ridge (series y "Dep. variable",
 
     # Run cross-validation
     #======================
-    cv_ridge(&self)		# returns the "cv_loss" matrix holding losses obtained by CV
+    cvRidge(&self)		# returns the "cv_loss" matrix holding losses obtained by CV
     # Each matrix in "cv_loss" is of dim "n_lambdas by n_folds"
 
 
     # Determine optimally trained model conditional
     # on some loss metric
     #================================================
-    get_optimal_lambda(&self)
+    getOptimalLambda(&self)
 
 
     # Compute the solution path
     #===========================
-    est_ridge_lambda(&self)
+    estRidgeLambda(&self)
 
     # Grab coefficient estimates of optimal model
     #============================================
@@ -202,7 +211,7 @@ function bundle ridge (series y "Dep. variable",
     # Print Ridge estimation results
     #================================
     if self.printout
-        print_ridge_estimates(&self)
+        printRidgeEstimates(&self)
     endif
 
 
@@ -215,7 +224,8 @@ function bundle ridge (series y "Dep. variable",
     return self
 end function
 
-function void print_ridge_estimates (bundle *self)
+
+function void printRidgeEstimates (bundle *self)
     # labels
     rnameset(self.betas, self.Xnames)
     rnameset(self.tstats, self.Xnames)
@@ -236,7 +246,7 @@ function void print_ridge_estimates (bundle *self)
 end function
 
 
-function void get_optimal_lambda (bundle *self)
+function void getOptimalLambda (bundle *self)
 
 /* This function evaluates all computed loss values for a given metric
    and determines the optimal shrinkage parameter 'lamba'. Fits the model
@@ -259,13 +269,11 @@ function void get_optimal_lambda (bundle *self)
     self.lambda_min_se = self.lambdas[self.index_lambda_min_se]	# 'lambda' minimizing sd(loss)
     self.loss_min_se = cv_loss[self.index_lambda_min_se,2]					# 'lambda' minimizing sd(loss)
 
-    # Print CV results
-    print_cv_ridge_res(&self)
-
+    printCvRidgeRes(&self)
 end function
 
 
-function void plot_loss (bundle *self,
+function void plotLoss (bundle *self,
                          string *path[null] "Set path + filename")
     /* Plot the loss function as a function of log(lambda) */
 
@@ -298,7 +306,7 @@ function void plot_loss (bundle *self,
 end function
 
 
-function void plot_beta (bundle *self,
+function void plotBeta (bundle *self,
                          string *path[null] "Set path + filename")
     /* Plot the solution path as a function of log(lambda) */
 
@@ -326,7 +334,7 @@ function void plot_beta (bundle *self,
 end function
 
 
-function matrices gen_cv_loss_mat (bundle *self)
+function matrices genCvLossMat (bundle *self)
 /* Helper function generating an array of
     matrices for holding various CV eval. metrics */
     matrices cv_loss = array(self.n_fc_stats)
@@ -338,13 +346,13 @@ end function
 
 
 
-function void cv_ridge (bundle *self)
+function void cvRidge (bundle *self)
 
 /* Cross-validation for Ridge estimator
     using the "cv_data_generator" package */
 
     # Generate array of matrices holding various forecast eval. metrics
-    matrices self.cv_loss = gen_cv_loss_mat(&self)
+    matrices self.cv_loss = genCvLossMat(&self)
 
     strings cnam = array(1+self.n_folds)
     cnam[1] = "Lambda"
@@ -369,13 +377,13 @@ function void cv_ridge (bundle *self)
 
         # Loop for a given training-set over lambda values
         #==================================================
-        self.curr_fold = $fold_loop		# temporary scalar
-        est_ridge_lambda(&self)			# generates "self.cv_loss" array of matrices
+        self.curr_fold = $fold_loop				# temporary scalar
+        estRidgeLambda(&self)					# generates "self.cv_loss" array of matrices
     endloop
 
     # Attache column names
     loop j=1..self.n_fc_stats -q
-        cnameset(self.cv_loss[j], cnam)  # array of "n_lambdas by n_folds" matrices holding forecast loss
+        cnameset(self.cv_loss[j], cnam)  		# array of "n_lambdas by n_folds" matrices holding forecast loss
     endloop
 
     scalar self.doCV = 0						# as doCV is done, it's not needed anymore!
@@ -383,7 +391,7 @@ function void cv_ridge (bundle *self)
 end function
 
 
-function void est_ridge_lambda (bundle *self)
+function void estRidgeLambda (bundle *self)
 
     /* Function estimating Ridge for different lambda values */
 
@@ -417,9 +425,8 @@ function void est_ridge_lambda (bundle *self)
     loop i=1..self.nlambda -q
 
         # Train the model
-
         if self.doCV
-            matrix bhat = ridge_aux(self.lambdas[i], my, mX)
+            matrix bhat = ridgeAux(self.lambdas[i], my, mX)
             # rescale using moments of training set only
             bhat = bhat .* (sdc(my) ./ sdc(mX)')
 
@@ -432,7 +439,7 @@ function void est_ridge_lambda (bundle *self)
             endif
 
         else
-            matrix temp = ridge_svd(self.lambdas[i], my, mX)
+            matrix temp = ridgeSvd(self.lambdas[i], my, mX)
 
             self.betas[(1+self.wconst):,i] = temp[,1]
             self.betaCovs[i] = temp[, 2:]
@@ -469,8 +476,7 @@ function void est_ridge_lambda (bundle *self)
 end function
 
 
-
-function matrix ridge_svd (scalar lambda,
+function matrix ridgeSvd (scalar lambda,
                            const matrix my,
                            const matrix mX,
                            matrix *resids[null],
@@ -501,7 +507,7 @@ function matrix ridge_svd (scalar lambda,
 end function
 
 
-function matrix ridge_naive (scalar lambda,
+function matrix ridgeNaive (scalar lambda,
                              const matrix my,
                              const matrix mX,
                              matrix *resids[null],
@@ -529,7 +535,8 @@ function matrix ridge_naive (scalar lambda,
     return out
 end function
 
-function matrix ridge_aux (scalar lambda,
+
+function matrix ridgeAux (scalar lambda,
                            const matrix my,
                            const matrix mX)
     # Ridge function using auxiliary OLS
