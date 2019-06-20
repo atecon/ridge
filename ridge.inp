@@ -217,14 +217,9 @@ function bundle ridge (series y "Dep. variable",
     #===========================
     estRidgeLambda(&self)
 
-    # Grab coefficient estimates of optimal model
-    #============================================
-    matrix self.beta_min = self.betas[,self.index_lambda_min]
-    matrix self.beta_min_se = self.betas[,self.index_lambda_min_se]
-
-    matrix self.tstats_min = self.tstats[,self.index_lambda_min]
-    matrix self.tstats_min_se = self.tstats[,self.index_lambda_min_se]
-
+    # Grab coefficient estimates + t-stats of optimal model
+    #======================================================
+    getOptimalBeta(&self)
 
     # Print Ridge estimation results
     #================================
@@ -233,6 +228,8 @@ function bundle ridge (series y "Dep. variable",
     endif
 
 
+    # TODO: Clean up the final bundle
+    # TODO: Add checks and error messages
     # copy to output
     /*
        return defbundle("lambdas", self.lambdas, "coeffs", self.betas, \
@@ -240,6 +237,15 @@ function bundle ridge (series y "Dep. variable",
        "s2s", self.s2s, "Xnames", self.Xnames)
     */
     return self
+end function
+
+
+function void getOptimalBeta (bundle *self)
+    /* Helper function grabbing point estimates + t-stats from optimal model */
+    matrix self.beta_min = self.betas[,self.index_lambda_min]
+    matrix self.beta_min_se = self.betas[,self.index_lambda_min_se]
+    matrix self.tstats_min = self.tstats[,self.index_lambda_min]
+    matrix self.tstats_min_se = self.tstats[,self.index_lambda_min_se]
 end function
 
 
