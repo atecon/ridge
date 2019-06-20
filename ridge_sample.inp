@@ -7,7 +7,7 @@ string wd = "/home/at/git/ridge"
 
 include "@wd/ridge.inp"		# SET PATH
 
-scalar runEX = 2		# select an example
+scalar runEX = 1		# select an example
 
 # specify some penalty values
 # TODO: let's do the following within the function:
@@ -64,17 +64,18 @@ bundle opts = null
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
 string opts.loss_type = "mape"			# 'me', 'rmse' (default), 'mae', 'mape'
-string opts.cv_type = "rolwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
+string opts.cv_type = "recwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
+scalar opts.win_size = int(0.5*$nobs)	# length of window, only for 'rolwin' and 'recwin' types
 
 # Run training and evaluation using cross-validation
 #====================================================
 bundle b_ridge = ridge(LHS, RHS, opts)
 
 # Plot loss as a function of lambda
-plot_loss(&b_ridge)
+plotLoss(&b_ridge)
 
 # Plot solution path
-plot_beta(&b_ridge)
+plotBeta(&b_ridge)
 
 # Grab coeff. conditional on optimal lambda
 #==========================================
