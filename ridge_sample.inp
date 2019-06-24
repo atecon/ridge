@@ -7,15 +7,7 @@ string wd = "/home/at/git/ridge"
 
 include "@wd/ridge.inp"		# SET PATH
 
-scalar runEX = 1		# select an example
-
-# specify some penalty values
-# TODO: let's do the following within the function:
-/* If the user doesn't specify lambda or nlambda, 
- we set nlambda=100 and lmax=400
- In glmnet() a pre-check is ran: set lmax
- there where most coefficients are 'close to zero'
-*/
+scalar runEX = 4		# select an example
 
 # Select an example
 if runEX==1
@@ -23,10 +15,9 @@ if runEX==1
     
     # define the variables
     series LHS = ldiff(PAU)
-    list RHS = const LHS(-1 to -2) IUS(-1 to -2)  IAU(-1 to -2)
+    list RHS = const LHS(-1 to -2) IUS(-1 to -2)  IAU(-1 to -2)    
     
-    ols LHS RHS
-
+    ols LHS RHS					# benchmark
     
 elif runEX==2
     # Dataset from glmnet
@@ -44,27 +35,38 @@ elif runEX==3
     set seed 1234
     setobs 1 1 --time-series
     series e = normal()
+    e[1] = NA
+    e[2] = NA
     series LHS = 1
-    series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + e
-    matrix X = mnormal($nobs,25)		# further exogenous
+    series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + 0.2*LHS(-6) + e
+    matrix X = mnormal($nobs, 50)		# further exogenous
     list RHS = const LHS(-1 to -6)		# arbtrary lags of the endogenous
     loop i=1..cols(X) -q
         series S$i = X[,i]
         RHS += S$i
-    endloop    
+    endloop
+
+elif runEX==4
+    open mroz.gdt -q --preserve    
+    series LHS = hwage
+    list RHS = const dataset    
+    ols LHS RHS
+    
+    smpl --contiguous LHS RHS
 endif
+
 
 # run the main function with default values
 #===========================================
 bundle opts = null
 
 # lambda values to evaluate (optional; default 100 values between [0.1,400])
-#matrix opts.lambdas = {0.6,5}
 # Loss function for CV (optional, default "rmse")
 scalar opts.l_min = 0.001
 scalar opts.l_max = 200
-string opts.loss_type = "mape"			# 'me', 'rmse' (default), 'mae', 'mape'
-string opts.cv_type = "recwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
+#scalar opts.nlambda = 150				# number of lambda values (default: 100)
+#string opts.loss_type = "mape"			# 'me', 'rmse' (default), 'mae', 'mape'
+string opts.cv_type = "rolwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
 scalar opts.win_size = int(0.5*$nobs)	# length of window, only for 'rolwin' and 'recwin' types
 
 # Run training and evaluation using cross-validation
@@ -82,28 +84,9 @@ plotBeta(&b_ridge)
 eval b_ridge.beta_min
 
 
-/* DEPRECATED?
+# Estimate beta for a given lambda value
+#========================================
+smpl --contiguous LHS RHS
+bhat = ridgeAux(b_ridge.lambda_min, {LHS}, {RHS})
+bhat
 
-# compare with the (computationally) naive alternative
-# (matrix-based function)
-matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
-print rn
-
-## compare with OLS results
-print "-- OLS comparison --"
-ols LHS RHS
-
-## now test an underdetermined case, #param > #obs:
-numk = 20
-N = 10
-matrix my = mnormal(N, 1)
-matrix mX = mnormal(N, numk)
-
-# use the matrix-based backend function directly
-eval ridge_svd(lambdas[1], my, mX)[,1]
-
-## do a mechanical test of a no-constant case
-RHS = RHS - const
-bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge
-*/

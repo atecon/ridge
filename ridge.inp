@@ -66,6 +66,30 @@ function bundle defaultRidgeOpts (void)
     return self
 end function
 
+function void runChecks (bundle *self, const series y, list X)
+    /* Run some initial checks */
+
+    # Test for time-series data set and drop eventual missings
+    # FIXME: Determine the data type!! The following does not work!
+    smpl --contiguous y X
+    if $error
+        smpl --no-missing y X
+        scalar self.ists = 0        
+    else
+        self.ists = 1
+    endif
+    eval self.ists
+    stop
+    
+    # Check cv type
+    if self.ists==0 && (self.cv_type=="rolwin" || self.cv_type=="recwin")
+        printf "\nError: Your datasets is not of the time-series type.\n"
+        printf "\nYou have selected '%s' as the cross-validation type.\n", self.cv_type
+        funcerr "You can only select 'kfold' or 'loo' as the cross-validation type."
+    endif
+    
+end function 
+
 
 function scalar getSelLoss (string metric)
     /* Helper function returning the entry from the vector fcstats() returns */
@@ -147,18 +171,21 @@ function bundle ridge (series y "Dep. variable",
         self.sel_loss = getSelLoss(self.loss_type)
     endif
 
+    # Run some simple checks
+    runChecks(&self, y, X)
+
     # Drop missings
     scalar T = $nobs
-    catch smpl --contiguous y X
-    if $error						# no time-series data
+    if self.ists
+        smpl --contiguous y X
+    else
         smpl --no-missing y X
     endif
-    if T<$nobs
-        printf "\nWarning: We have dropped %d observations due to missings.\n"
-        printf "\nInfo: Sample range is %d to %d (N=%d(.\n", $t1, $t2, $nobs
+    if T>$nobs
+        printf "\nWarning: We have dropped %d observations due to missings.\n", (T-$nobs)
+        printf "\nInfo: Sample range is %d to %d (N=%d).\n", $t1, $t2, $nobs
     endif
-
-
+    
     # Put some stuff to the bundle
     series self.y = y
     list self.X = X
@@ -227,16 +254,21 @@ function bundle ridge (series y "Dep. variable",
         printRidgeEstimates(&self)
     endif
 
-
-    # TODO: Clean up the final bundle
     # TODO: Add checks and error messages
     # copy to output
-    /*
-       return defbundle("lambdas", self.lambdas, "coeffs", self.betas, \
-       "tstats", self.tstats, "vcvs", self.betaCovs, "uhats", self.resids, \
-       "s2s", self.s2s, "Xnames", self.Xnames)
-    */
-    return self
+
+    return defbundle("l_min", self.l_min, "l_max", self.l_max, \
+      "nlambda", self.nlambda, "lambdas", self.lambdas, \
+      "lambda_min", self.lambda_min, "lambda_min_se", self.lambda_min_se, \
+      "cv_type", self.cv_type, "n_folds", self.n_folds, "cv_loss", self.cv_loss, \
+      "loss_type", self.loss_type, "sel_loss", self.sel_loss, \
+      "loss_min", self.loss_min, "loss_in_se", self.loss_min_se, \
+      "betas", self.betas, "beta_min", self.beta_min, \
+      "beta_min_se", self.beta_min_se, "Xnames", self.Xnames, \
+      "win_size", self.win_size, "tstats_min", self.tstats_min, \
+      "tstats_min_se", self.tstats_min_se, \
+      "wconst", self.wconst)
+
 end function
 
 
@@ -276,7 +308,6 @@ function void getOptimalLambda (bundle *self)
    and determines the optimal shrinkage parameter 'lamba'. Fits the model
     and returns its point estimate and additional regression information. */
 
-
     # Conditional on a selected cross-validation metric, get the optimal
     # shrinkage parameter.
     #-------------------------------------------------------------------
@@ -286,12 +317,14 @@ function void getOptimalLambda (bundle *self)
 
     # Minimize mean(loss)
     self.index_lambda_min = iminc(cv_loss[,1])
+    #eval self.index_lambda_min
     self.lambda_min = self.lambdas[self.index_lambda_min] 	# 'lambda' minimizing mean(loss)
     self.loss_min = cv_loss[self.index_lambda_min,1]						# assosciated loss
     # Minimize sd(loss)
     self.index_lambda_min_se = iminc(cv_loss[,2])
+    #eval self.index_lambda_min_se
     self.lambda_min_se = self.lambdas[self.index_lambda_min_se]	# 'lambda' minimizing sd(loss)
-    self.loss_min_se = cv_loss[self.index_lambda_min_se,2]					# 'lambda' minimizing sd(loss)
+    self.loss_min_se = cv_loss[self.index_lambda_min_se,1]					# 'lambda' minimizing sd(loss)
 
     printCvRidgeRes(&self)
 end function
@@ -339,6 +372,8 @@ function void plotBeta (bundle *self,
     cnam += "Lambda"
     cnameset(mat,cnam)
 
+    string set_key = (cols(self.betas)<=15) ? "set key outside below font ',8'" : "set nokey"
+    
     plot mat
         options with-lines fit=none single-yaxis
         printf "set ylabel 'Coefficients' font ', 12'"
@@ -350,7 +385,7 @@ function void plotBeta (bundle *self,
           nohead lc rgb 'orange' lw 1", log(self.lambda_min_se), log(self.lambda_min_se)
         printf "set label 'λ_min_se' at %g,graph(0.3,0.4)", log(self.lambda_min_se)
         #printf "set key right"
-        printf "set key outside below font ',8'"
+        printf "%s", set_key
         literal set grid
         printf "set xrange[%g:%g]", 1.1*minc(mat[,cols(mat)]), 1.2*maxc(mat[,cols(mat)])
     end plot --output="@path"
@@ -387,7 +422,7 @@ function void cvRidge (bundle *self)
         # string construction
         cnam[1+fold_loop] = sprintf("fold=%d",fold_loop)
 
-        # Set up the training and test set
+        # Set up the training and test setself.cv_loss
         matrix self.my_train = self.y_train[fold_loop][,2:]
         matrix self.mX_train = self.X_train[fold_loop][,2:]
         matrix self.my_test = self.y_test[fold_loop][,2:]
@@ -410,12 +445,10 @@ function void cvRidge (bundle *self)
     endloop
 
     scalar self.doCV = 0						# as doCV is done, it's not needed anymore!
-
 end function
 
 
 function void estRidgeLambda (bundle *self)
-
     /* Function estimating Ridge for different lambda values */
 
     if self.doCV
@@ -426,7 +459,6 @@ function void estRidgeLambda (bundle *self)
 
         yraw = self.myraw_train
         yraw_test = self.myraw_test
-
     else
         # Case where you don't wan to consider different folds
         # but only loop through different lambda values
@@ -454,7 +486,8 @@ function void estRidgeLambda (bundle *self)
             bhat = bhat .* (sdc(my) ./ sdc(mX)')
 
             # construct residuals
-            matrix resids = yraw - mX*bhat 	# original data (w/o const)
+            matrix resids = getResids(yraw, mX, bhat)      # original data (w/o const)
+            #matrix resids = yraw - mX*bhat
 
             # resids may have non-zero mean: insert the constant term
             if self.wconst
@@ -465,20 +498,20 @@ function void estRidgeLambda (bundle *self)
             matrix temp = ridgeSvd(self.lambdas[i], my, mX)
 
             self.betas[(1+self.wconst):,i] = temp[,1]
-            self.betaCovs[i] = temp[, 2:]
-            self.tstats[(1+self.wconst):,i] = self.betas[(1+self.wconst):,i] ./ sqrt(diag(temp[, 2:]))
+            self.betaCovs[i] = temp[,2:]
+            self.tstats[(1+self.wconst):,i] = self.betas[(1+self.wconst):,i] ./ sqrt(diag(temp[,2:]))
 
             # rescale
             self.betas[(1+self.wconst):,i] = self.betas[(1+self.wconst):,i] .* (self.ysd ./ self.Xsd')
             self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
 
             # construct residuals
-            matrix resids = {self.y} - {self.Xtilde} * self.betas[(1+self.wconst):,i] # original data (w/o const)
+            matrix resids = getResids({self.y}, {self.Xtilde}, self.betas[(1+self.wconst):,i]) # original data (w/o const)
             self.resids[,i] = resids				# resids may have non-zero mean
 
             # estimate residual variance
             res = cdemean(resids)
-            self.s2s[i] = res'res / rows(self.my)
+            self.s2s[i] = getS2(res, self.my)
 
             # insert the constant term
             if self.wconst
@@ -498,6 +531,16 @@ function void estRidgeLambda (bundle *self)
 
 end function
 
+function matrix getResids (const matrix my, const matrix mX, const matrix bhat)
+    /* Helper function computing residuals */ 
+    return my - mX*bhat
+end function 
+
+function scalar getS2 (const matrix resids, const matrix mX)
+    /* Helper function for computing variable of residuals */
+    return resids'resids / rows(mX)
+end function 
+
 
 function matrix ridgeSvd (scalar lambda,
                           const matrix my,
@@ -515,8 +558,8 @@ function matrix ridgeSvd (scalar lambda,
         matrix ridgeI = (Vt' .* E_lda_row) * Vt
         # beta, using this inverse
         out = ridgeI * mX'my
-        matrix res = my - mX*out
-        scalar s2 = res'res / rows(mX)
+        matrix res = getResids(my, mX, out)
+        scalar s2 = getS2(res, mX)
         matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
         out ~= covbeta
     else
@@ -545,10 +588,10 @@ function matrix ridgeNaive (scalar lambda,
     # beta
     matrix out = ridgeI * mX'my
     if exists(resids) || withcov
-        matrix res = my - mX*out # y - Xb
+        matrix res = getResids(my, mX, out)
         if withcov
-            scalar s2 = res'res / rows(mX)
-            matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
+            scalar s2 = getS2(res, mX)
+            matrix covbeta = s2 * ridgeI * mX'mX * ridgeI            
             out ~= covbeta
         endif
         if exists(resids)
@@ -568,8 +611,7 @@ function matrix ridgeAux (scalar lambda,
     K = cols(mX)
     matrix mXa = mX | (sqrt(lambda) * I(K))
     matrix mya = my | zeros(K,1)
-    matrix beta = mols(mya, mXa)
-    return beta
+    return mols(mya, mXa)
 end function
 
 
