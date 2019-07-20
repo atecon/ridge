@@ -1,26 +1,28 @@
 set verbose off
 clear 
 
-#include ridge.gfn --force
 
-string wd = "/home/at/git/ridge"
-
+string wd = "/home/at/git/ridge/src"
 include "@wd/ridge.inp"		# SET PATH
 
-scalar runEX = 4		# select an example
+#include ridge.gfn --force
+
+
+# Select an example: 1 to 4
+scalar EXAMPLE = 1
 
 # Select an example
-if runEX==1
+if EXAMPLE==1
     open australia.gdt -q --preserve
     
-    # define the variables
+    # Define the variables
     series LHS = ldiff(PAU)
     list RHS = const LHS(-1 to -2) IUS(-1 to -2)  IAU(-1 to -2)    
     
-    ols LHS RHS					# benchmark
+    ols LHS RHS					# OLS as benchmark
     
-elif runEX==2
-    # Dataset from glmnet
+elif EXAMPLE==2
+    # Dataset from R's glmnet package
     open "@wd/glmnet_QSE.csv" --quiet  --preserve
     setobs 1 1 --special-time-series
     setobs 1 1 --cross-section
@@ -29,8 +31,8 @@ elif runEX==2
     list RHS = const dataset
     RHS -= LHS
     
-elif runEX==3
-    # SIMULATION
+elif EXAMPLE==3
+    # SIMULATION: TIME CONSUMING
     nulldata 500
     set seed 1234
     setobs 1 1 --time-series
@@ -39,14 +41,15 @@ elif runEX==3
     e[2] = NA
     series LHS = 1
     series LHS = 4.3 + 0.8*LHS(-1) - 0.4*LHS(-2) + 0.2*LHS(-6) + e
-    matrix X = mnormal($nobs, 50)		# further exogenous
+    matrix X = mnormal($nobs, 50)		# add 50 further random variables
     list RHS = const LHS(-1 to -6)		# arbtrary lags of the endogenous
     loop i=1..cols(X) -q
         series S$i = X[,i]
         RHS += S$i
     endloop
 
-elif runEX==4
+elif EXAMPLE==4
+    # Cross-sectional
     open mroz.gdt -q --preserve    
     series LHS = hwage
     list RHS = const dataset    
@@ -56,22 +59,27 @@ elif runEX==4
 endif
 
 
-# run the main function with default values
+# Run the main function with default values
 #===========================================
-bundle opts = null
 
-# lambda values to evaluate (optional; default 100 values between [0.1,400])
-# Loss function for CV (optional, default "rmse")
-scalar opts.l_min = 0.001
-scalar opts.l_max = 200
-#scalar opts.nlambda = 150				# number of lambda values (default: 100)
-#string opts.loss_type = "mape"			# 'me', 'rmse' (default), 'mae', 'mape'
-string opts.cv_type = "rolwin"			# 'kfold' (default), 'loo', 'rolwin', 'recwin'
-scalar opts.win_size = int(0.5*$nobs)	# length of window, only for 'rolwin' and 'recwin' types
+bundle opts = null
+/* Activate if you want to control some parameters of choice
+
+scalar opts.l_min = 0.1					# Optional: minimum lambda value (default: 0.01)
+scalar opts.l_max = 300					# Optional: minimum lambda value (default: 400)
+scalar opts.nlambda = 150				# Optional: number of lambda values (default: 100)
+string opts.loss_type = "rmse"			# Optional: 'me', 'rmse' (default), 'mae', 'mape'
+string opts.cv_type = "rolwin"			# Optional: 'kfold' (default), 'loo', 'rolwin' (default for time-series), 'recwin'
+opts.cv_type = ($datatype==1) ? "kfold" : opts.cv_type		# for cross-section data it's 'kfold' here
+scalar opts.win_size = int(0.5*$nobs)	# Optional: length of window, only for 'rolwin' and 'recwin' types (default: 0.7)
+*/
+
 
 # Run training and evaluation using cross-validation
 #====================================================
-bundle b_ridge = ridge(LHS, RHS, opts)
+set stopwatch
+bundle b_ridge = Ridge(LHS, RHS, opts)
+printf "\nRidge computation took %.3f seconds.\n", $stopwatch
 
 # Plot loss as a function of lambda
 plotLoss(&b_ridge)
@@ -80,13 +88,9 @@ plotLoss(&b_ridge)
 plotBeta(&b_ridge)
 
 # Grab coeff. conditional on optimal lambda
-#==========================================
-eval b_ridge.beta_min
+#eval b_ridge.beta_min
 
-
-# Estimate beta for a given lambda value
-#========================================
+# Estimate beta for a given lambda (here 'lambda_min') value by applying the public function
 smpl --contiguous LHS RHS
 bhat = ridgeAux(b_ridge.lambda_min, {LHS}, {RHS})
 bhat
-
