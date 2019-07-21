@@ -1,0 +1,55 @@
+Help text for the ridge.gfn package
+by Sven Schreiber
+(please ask questions and report bugs on the gretl mailing list if possible)
+
+This package implements the ridge regression, a penalized (or shrinkage) version of linear regression.
+Algebraically, the ridge estimator replaces the term (X'X) from OLS by the term (X'X + lambda * I), where lambda is a scalar penalty parameter (and I is the identity matrix). The default method in this package to calculate the solution is by a singular-value decomposition, and to work on the standardized variables (mean zero, unit variance). For other options see below.
+
+--------------------	
+The main function is also called "ridge" and takes the following arguments:
+(1) matrix lambdas: required, L-element vector of penalties; passing a scalar is also accepted by gretl
+(2) series y: required, the dependent variable
+(3) list X: required, the K regressors. If a constant is included, it is moved to the first position.
+(4) boolean printout: optional, default is 1 (=yes). Set to 0 to just get the return bundle and not print anything.
+
+Input data is standardized before doing ridge. The output is rescaled to match the original data, but since the demeaned data are used, no standard errors for the constant term coefficient are currently available.
+
+Returns a bundle with:
+- coeffs: KxL matrix of ridge estimators, L being number of lambdas;
+    If a constant term was originally included, its coefficient is estimated as mean(y - Xtilde'beta), where Xtilde does not contain the constant.  
+- tstats: KxL matrix of t-statistics; no tstat is available for the constant term, so if a constant term was given then tstats[1] is NA.
+- vcvs: L-element array of covariance matrices of estimated coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, where Ri is the inverse of (X'X + lambda * I). (No direct matrix inversion is done, though, for numerical reasons.)
+- uhats: TxL matrix of residual vectors, one for each lambda. 
+- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one for each lambda.
+-------------------
+
+For script use (e.g., in simulations) there are also three matrix-oriented functions: ridge_svd, ridge_naive, ridge_aux. These functions work on the input data as-is, no standardization is done, and they only accept a single penalty parameter.
+
+ridge_svd...
+uses the SVD to calculate results, takes the following arguments:
+(1) scalar lambda: required, the penalty parameter.
+(2) matrix my: required, data vector of the dependent variable.
+(3) matrix mX: required, data matrix of K regressors.
+(4) matrix-pointer resids: optional, acts as placeholder to retrieve the residuals (similar to gretl's built-in mols function).
+(5) boolean withcov: optional, default 1 (=yes), set to 0 to only return the coeff point estimates.
+
+Returns a matrix:
+Per default (withcov==1) a K x (1+K) matrix, the first col is the estimate beta_ridge, followed by the KxK matrix Cov(beta_ridge). Otherwise just a Kx1 matrix with the point estimates.
+
+ridge_naive...
+uses the textbook formulas directly, mainly for comparison purposes. Arguments and return values are identical to ridge_svd.
+
+ridge_aux...
+uses an auxiliary OLS regression to produce point estimates only, takes the following arguments:
+(1) scalar lambda: required, the penalty parameter.
+(2) matrix my: required, data vector of the dependent variable.
+(3) matrix mX: required, data matrix of K regressors.
+
+Returns a Kx1 coefficient matrix.
+-------------------
+
+To do:
+R2
+
+Changelog:
+- 1.0, September 2017: initial release
