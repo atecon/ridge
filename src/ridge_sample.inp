@@ -1,7 +1,7 @@
 # ridge_sample.inp script for the ridge.gfn package 
 # by Sven Schreiber 
 
-include ridge.gfn --force 
+#include ridge.gfn --force 
 
 open australia
 

@@ -3,85 +3,143 @@
 # version='1.0'
 # date='2017-09-22'
 
-function bundle ridge (matrix lambdas "Penalty params",
-                       series y "Dep. variable",
-                       const list X "Regressors",
+
+function bundle ridge (matrix lambdas "Penalty parameters",
+                       series y "Dependent variable",
+                       const list X "List of regressors",
                        bool printout[1] "Print results?")
     /* Input data is standardized before doing ridge.
-    The output is rescaled to match the original data.
-    Results for a constant (if present) are ordered first.
-    A scalar input for lambdas is treated by gretl as 1x1 matrix.
-    Returns a bundle with:
-    coeffs: KxL matrix of ridge estimators, L being number of lambdas;
-    If a constant term was originally included, its coefficient
-    is estimated as mean(y - Xtilde'beta), where Xtilde does not
-    contain the constant.
-    tstats: KxL matrix of t-statistics; no tstat is available for
-    the constant term, so if a constant term was given then
-    tstats[1] is NA.
-    vcvs: L-element array of matrices, each Kbar x Kbar.
-    Kbar is K, or K-1 if a constant term was originally included.
-    uhats: TxL matrix of residual vectors, one for each lambda
-    s2s: Lx1 vector of residual variance estimates (res'res / T)
-    FIXME: R2 ?
+       The output is rescaled to match the original data.
+       Results for a constant (if present) are ordered first.
+       A scalar input for lambdas is treated by gretl as 1x1 matrix.
+       Returns a bundle with:
+       coeffs: KxL matrix of ridge estimators, L being number of lambdas;
+       If a constant term was originally included, its coefficient
+       is estimated as mean(y - Xtilde'beta), where Xtilde does not
+       contain the constant.
+       tstats: KxL matrix of t-statistics; no tstat is available for
+       the constant term, so if a constant term was given then
+       tstats[1] is NA.
+       vcvs: L-element array of matrices, each Kbar x Kbar.
+       Kbar is K, or K-1 if a constant term was originally included.
+       uhats: TxL matrix of residual vectors, one for each lambda
+       s2s: Lx1 vector of residual variance estimates (res'res / T)
+       FIXME: R2 ?
     */
-    lambdas = vec(lambdas)	# ensure 1-dim
-    L = nelem(lambdas)
-    smpl --no-missing y X
+
+    bundle self = null
+    self.lambdas = vec(lambdas)
+    self.n_lambdas = nelem(self.lambdas)
+
+    if $datatype==1
+        smpl --no-missing y X
+    elif $datatype==2
+        smpl --contiguous y X
+    endif
+
+    series self.y = y
+        
     # check for constant
-    list Xtilde = X - const
-    wconst = nelem(Xtilde) < nelem(X) ? 1 : 0
+    list self.Xtilde = X - const
+    self.wconst = nelem(self.Xtilde) < nelem(X) ? 1 : 0
+
     # standardize and save factors for later
-    matrix my = cdemean({y})
-    scalar ysd = sdc(my)
-    my = my ./ ysd
-    matrix mX = cdemean({Xtilde})
-    matrix Xsd = sdc(mX)	# gives row vector
-    mX = mX ./ Xsd
+    demean_y_and_x(&self)
+
     ## cycle through the various lambdas
-    matrix betas, tstats, resids, s2s, res, temp
-    matrices betaCovs = array(L)
-    loop i = 1..L -q
-        temp = ridge_svd(lambdas[i], my, mX)
-        betas ~= temp[,1]
-        betaCovs[i] = temp[, 2:]
-        tstats ~= temp[,1] ./ sqrt(diag(temp[, 2:]))
-        # rescale
-        betas[,i] = betas[,i] .* (ysd ./ Xsd')
-        betaCovs[i] = betaCovs[i] * ysd^2 ./ (Xsd'Xsd)
-        # construct residuals
-        res = {y} - {Xtilde} * betas[,i] # original data (w/o const)
-        resids ~= res	# resids may have non-zero mean
-        # estimate residual variance
-        res = cdemean(res)
-        s2s |= res'res / rows(my)
-    endloop
-    # insert the constant term
-    if wconst
-        betas = meanc(resids) | betas
-        tstats = NA | tstats
-        list Xreorder = const Xtilde
-    else
-        list Xreorder = X
-    endif
-    # labels
-    strings Xnames = varnames(Xreorder)
-    rownames(betas, Xnames)
-    rownames(tstats, Xnames)
-    if printout
-        strings lbl = Xnames + defarray("Penalty", "Resid SD")
-        print "Ridge regression results"
-        loop i = 1..L -q
-            matrix cmat = betas[,i] ~ (betas[,i] ./ tstats[,i])
-            matrix extra = lambdas[i] | sqrt(s2s[i])
-            modprint cmat lbl extra
-        endloop
-    endif
+    initialize_storage_matrices(&self)
+    loop_through_lambda_values(&self)
+
+    get_xreorder_list(&self, X)
+    
+    set_rowname_betas_and_tstats(&self)
+    
+    print_ridge_results(&self, printout)
+
     # copy to output
-    return defbundle("coeffs", betas, "tstats", tstats, "vcvs", betaCovs, "uhats", resids, "s2s", s2s)
+    return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
+      "uhats", self.resids, "s2s", self.s2s)
+      
 end function
 
-function matrix ridge_svd (scalar lambda,
+
+function void set_rowname_betas_and_tstats (bundle *self)
+    rnameset(self.betas, varnames(self.Xreorder))
+    rnameset(self.tstats, varnames(self.Xreorder))
+end function
+
+
+function void get_xreorder_list (bundle *self, const list X)
+    if self.wconst
+        list self.Xreorder = const self.Xtilde
+    else
+        list self.Xreorder = X
+    endif
+end function
+
+
+function void loop_through_lambda_values (bundle *self)
+/* Helper function estimating ridge + retrieving various stats
+    for different shrinkage lambda parameters */
+
+    scalar idx = 1+self.wconst
+    loop i=1..self.n_lambdas -q
+
+        matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX)
+
+        self.betas[idx:,i] = temp[,1]
+        self.betaCovs[i] = temp[, 2:]
+        self.tstats[idx:,i] = self.betas[idx:,i] ./ sqrt(diag(temp[,2:]))
+
+        # rescale
+        self.betas[idx:,i] = self.betas[idx:,i] .* (self.ysd ./ self.Xsd')
+        self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
+
+        # construct residuals -- may have non-zero mean
+        self.resids[,i] = get_residuals({self.y}, {self.Xtilde}, \
+          self.betas[idx:,i]) # original data (w/o const)
+
+        # estimate residual variance
+        self.s2s[i] = get_residuals_variance(cdemean(self.resids[,i]), self.my)
+
+        # insert the constant term
+        self.betas[1,i] = (self.wconst) ? meanc(self.resids[,i]) : self.betas[1,i]
+        self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
+    endloop
+end function
+
+
+function void print_ridge_results (bundle *self, const bool printout)
+    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD")
+
+    print "Ridge regression results"
+    loop i = 1..self.n_lambdas -q
+        matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
+        matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
+        modprint cmat lbl extra
+    endloop
+end function
+
+function void demean_y_and_x (bundle *self)
+    /* Demeaning series y and list X and compute associated std.-errors. */
+    matrix my = cdemean({self.y})
+    scalar self.ysd = sdc(my)
+    self.my = my ./ self.ysd
+    matrix mX = cdemean({self.Xtilde})
+    matrix self.Xsd = sdc(mX)			# gives row vector
+    self.mX = mX ./ self.Xsd
+end function
+
+function void initialize_storage_matrices (bundle *self)
+    scalar k = (self.wconst==1) ? (nelem(self.Xtilde)+1) : nelem(self.Xtilde)
+    matrix self.betas = zeros(k, self.n_lambdas)
+    matrix self.tstats = zeros(k, self.n_lambdas)
+    matrix self.resids = zeros(rows(self.my), self.n_lambdas)
+    matrix self.s2s = zeros(self.n_lambdas, 1)
+    matrices self.betaCovs = array(self.n_lambdas)
+end function
+
+function matrix ridge_svd (const scalar lambda,
                            const matrix my,
                            const matrix mX,
                            matrix *resids[null],
@@ -97,8 +155,8 @@ function matrix ridge_svd (scalar lambda,
         matrix ridgeI = (Vt' .* E_lda_row) * Vt
         # beta, using this inverse
         out = ridgeI * mX'my
-        matrix res = my - mX*out
-        scalar s2 = res'res / rows(mX)
+        matrix res = get_residuals(my, mX, out)
+        scalar s2 = get_residuals_variance(res, mX)
         matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
         out ~= covbeta
     else
@@ -111,7 +169,7 @@ function matrix ridge_svd (scalar lambda,
     return out
 end function
 
-function matrix ridge_naive (scalar lambda,
+function matrix ridge_naive (const scalar lambda,
                              const matrix my,
                              const matrix mX,
                              matrix *resids[null],
@@ -126,9 +184,9 @@ function matrix ridge_naive (scalar lambda,
     # beta
     matrix out = ridgeI * mX'my
     if exists(resids) || withcov
-        matrix res = my - mX*out # y - Xb
+        matrix res = get_residuals(my, mX, out)
         if withcov
-            scalar s2 = res'res / rows(mX)
+            scalar s2 = get_residuals_variance(res, mX)
             matrix covbeta = s2 * ridgeI * mX'mX * ridgeI
             out ~= covbeta
         endif
@@ -139,7 +197,7 @@ function matrix ridge_naive (scalar lambda,
     return out
 end function
 
-function matrix ridge_aux (scalar lambda,
+function matrix ridge_aux (const scalar lambda,
                            const matrix my,
                            const matrix mX)
     # Ridge function using auxiliary OLS
@@ -150,4 +208,14 @@ function matrix ridge_aux (scalar lambda,
     matrix mya = my | zeros(K,1)
     matrix beta = mols(mya, mXa)
     return beta
+end function
+
+function matrix get_residuals (const matrix my, const matrix mX, const matrix bhat)
+    /* Helper function computing residuals */
+    return my - mX*bhat
+end function
+
+function scalar get_residuals_variance (const matrix resids, const matrix mX)
+    /* Helper function for computing the residuals' variance */
+    return resids'resids / rows(mX)
 end function
