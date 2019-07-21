@@ -1,9 +1,3 @@
-# author='Sven Schreiber'
-# email='svetosch@gmx.net'
-# version='1.0'
-# date='2017-09-22'
-
-
 function bundle ridge (matrix lambdas "Penalty parameters",
                        series y "Dependent variable",
                        const list X "List of regressors",
