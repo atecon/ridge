@@ -1,1 +1,1 @@
-Enhancement of Sven Schreiber's 'Ridge' package for #Gretl including a grid-search for the optimal lambda-value
+Refactoring Sven Schreiber's 'ridge' package for #Gretl including.
