@@ -38,3 +38,9 @@ eval ridge_svd(lambdas[1], my, mX)[,1]
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge
+
+matrix r2_scores = b_ridge.r2_scores
+r2_scores
+
+matrix r2 = b_ridge.r2				# quadrierte Korrel. zwischen y und yhat
+r2
