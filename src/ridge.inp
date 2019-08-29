@@ -53,7 +53,8 @@ function bundle ridge (matrix lambdas "Penalty parameters",
     # copy to output
     return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
       "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
-      "r2_quad_corr", self.r2_quad_corr, "aic", self.aic, "bic", self.bic)
+      "r2_quad_corr", self.r2_quad_corr, "aic", self.aic, "bic", self.bic, \
+      "df", self.df)
 
 end function
 
@@ -247,7 +248,7 @@ end function
 function matrix ridge_hmat (const scalar lambda,
                             const matrix my,
                             const matrix mX,
-                            const bool use_svd[0])
+                            const bool use_svd[1])
     /* Compute the H matrix using ridge */
     
     if use_svd
@@ -312,6 +313,7 @@ function scalar r2_quad_corr (const matrix *y_true,
     /* R-square based on quadratic correlation */
     return corr(y_true, y_pred)^2
 end function
+
 
 
 function scalar r2_score (const matrix *y_true,
