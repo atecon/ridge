@@ -109,27 +109,12 @@ function void loop_through_lambda_values (bundle *self)
         self.aic[i] = aic_bic[1]
         self.bic[i] = aic_bic[2]
 
-
         # Compute r-square
         matrix r_squares = r2_stats({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]))
-
         self.r2_quad_corr[i] = r_squares[1]
         self.r2_scores[i] = r_squares[2]
 
     endloop
-end function
-
-
-function matrix ridge_aic_bic (const scalar df "Degrees of freedom",
-                               const scalar RSS,
-                               const int N "No. of observations")
-    /* Compute both AIC and BIC criteria for ridge regression */
-    
-    scalar s = N*log(RSS)
-    scalar aic = s+2*df
-    scalar bic = s+df*log(N)
-
-    return aic | bic
 end function
 
 
@@ -168,25 +153,6 @@ function void initialize_storage_matrices (bundle *self)
     matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
     matrix self.r2_quad_corr = NA*zeros(1, self.n_lambdas)
     matrix self.r2_quad_corr_adj = NA*zeros(1, self.n_lambdas)
-end function
-
-
-function matrix ridge_hmat (const scalar lambda,
-                            const matrix my,
-                            const matrix mX,
-                            const bool use_svd[0])
-    /* Compute the H matrix using ridge */
-    
-    if use_svd
-        matrix out, U, Vt	# Vt: V transposed
-        matrix sv = svd(mX, &U, &Vt)
-        matrix E_lda_row = 1 / (sv.^2 + lambda)
-        matrix ridgeI = (Vt' .* E_lda_row) * Vt
-    else
-        matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
-    endif
-
-    return mX*ridgeI*mX'
 end function
 
 
@@ -277,6 +243,37 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
     return resids'resids / rows(mX)
 end function
 
+
+function matrix ridge_hmat (const scalar lambda,
+                            const matrix my,
+                            const matrix mX,
+                            const bool use_svd[0])
+    /* Compute the H matrix using ridge */
+    
+    if use_svd
+        matrix out, U, Vt	# Vt: V transposed
+        matrix sv = svd(mX, &U, &Vt)
+        matrix E_lda_row = 1 / (sv.^2 + lambda)
+        matrix ridgeI = (Vt' .* E_lda_row) * Vt
+    else
+        matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
+    endif
+
+    return mX*ridgeI*mX'
+end function
+
+
+function matrix ridge_aic_bic (const scalar df "Degrees of freedom",
+                               const scalar RSS,
+                               const int N "No. of observations")
+    /* Compute both AIC and BIC criteria for ridge regression */
+    
+    scalar s = N*log(RSS)
+    scalar aic = s+2*df
+    scalar bic = s+df*log(N)
+
+    return aic | bic
+end function
 
 
 function matrix r2_stats (matrix y_true "T by 1 vector of realizations",
