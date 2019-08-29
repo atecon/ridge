@@ -32,7 +32,7 @@ function bundle ridge (matrix lambdas "Penalty parameters",
     endif
 
     series self.y = y
-        
+
     # check for constant
     list self.Xtilde = X - const
     self.wconst = nelem(self.Xtilde) < nelem(X) ? 1 : 0
@@ -45,16 +45,16 @@ function bundle ridge (matrix lambdas "Penalty parameters",
     loop_through_lambda_values(&self)
 
     get_xreorder_list(&self, X)
-    
+
     set_rowname_betas_and_tstats(&self)
-    
+
     print_ridge_results(&self, printout)
 
     # copy to output
     return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
       "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
-      "r2", self.r2)
-      
+      "r2_quad_corr", self.r2_quad_corr, "aic", self.aic, "bic", self.bic)
+
 end function
 
 
@@ -100,11 +100,36 @@ function void loop_through_lambda_values (bundle *self)
         # insert the constant term
         self.betas[1,i] = (self.wconst) ? meanc(self.resids[,i]) : self.betas[1,i]
         self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
-        
-        self.r2_scores[i] = r2_score({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]))        
-        self.r2[i] = corr({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]))^2
-        
+
+
+        # degree-of-freedom
+        self.df[i] = tr(ridge_hmat(self.lambdas[i], self.my, self.mX))
+
+        matrix aic_bic = ridge_aic_bic(self.df[i], sumc(self.resids[,i].^2), rows(self.my))
+        self.aic[i] = aic_bic[1]
+        self.bic[i] = aic_bic[2]
+
+
+        # Compute r-square
+        matrix r_squares = r2_stats({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]))
+
+        self.r2_quad_corr[i] = r_squares[1]
+        self.r2_scores[i] = r_squares[2]
+
     endloop
+end function
+
+
+function matrix ridge_aic_bic (const scalar df "Degrees of freedom",
+                               const scalar RSS,
+                               const int N "No. of observations")
+    /* Compute both AIC and BIC criteria for ridge regression */
+    
+    scalar s = N*log(RSS)
+    scalar aic = s+2*df
+    scalar bic = s+df*log(N)
+
+    return aic | bic
 end function
 
 
@@ -131,14 +156,39 @@ end function
 
 function void initialize_storage_matrices (bundle *self)
     scalar k = (self.wconst==1) ? (nelem(self.Xtilde)+1) : nelem(self.Xtilde)
-    matrix self.betas = zeros(k, self.n_lambdas)
-    matrix self.tstats = zeros(k, self.n_lambdas)
-    matrix self.resids = zeros(rows(self.my), self.n_lambdas)
+    matrix self.betas = NA*zeros(k, self.n_lambdas)
+    matrix self.tstats = NA*zeros(k, self.n_lambdas)
+    matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
     matrix self.s2s = zeros(self.n_lambdas, 1)
     matrices self.betaCovs = array(self.n_lambdas)
-    matrix self.r2_scores = zeros(1, self.n_lambdas)
-    matrix self.r2 = zeros(1, self.n_lambdas)
+    
+    matrix self.df = NA*zeros(1, self.n_lambdas)
+    matrix self.aic = NA*zeros(1, self.n_lambdas)
+    matrix self.bic = NA*zeros(1, self.n_lambdas)
+    matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
+    matrix self.r2_quad_corr = NA*zeros(1, self.n_lambdas)
+    matrix self.r2_quad_corr_adj = NA*zeros(1, self.n_lambdas)
 end function
+
+
+function matrix ridge_hmat (const scalar lambda,
+                            const matrix my,
+                            const matrix mX,
+                            const bool use_svd[0])
+    /* Compute the H matrix using ridge */
+    
+    if use_svd
+        matrix out, U, Vt	# Vt: V transposed
+        matrix sv = svd(mX, &U, &Vt)
+        matrix E_lda_row = 1 / (sv.^2 + lambda)
+        matrix ridgeI = (Vt' .* E_lda_row) * Vt
+    else
+        matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
+    endif
+
+    return mX*ridgeI*mX'
+end function
+
 
 function matrix ridge_svd (const scalar lambda,
                            const matrix my,
@@ -215,7 +265,7 @@ function matrix get_y_pred (const matrix mX, const matrix bhat)
     /* Helper function for computing fitted values*/
     return mX*bhat
 end function
-    
+
 
 function matrix get_residuals (const matrix my, const matrix mX, const matrix bhat)
     /* Helper function for computing residuals */
@@ -228,33 +278,10 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
 end function
 
 
-function scalar r2_score (matrix y_true "T by 1 vector of realizations",
-                         matrix y_pred "T by 1 vector of estimated values")
-    /* R^2 (coefficient of determination) regression score function.
-       Best possible score is 1.0 and it can be negative (because the
-       model can be arbitrarily worse). A constant model that always
-       predicts the expected value of y, disregarding the input features,
-       would get a R^2 score of 0.0.
 
-       Notes
-       -----
-       This is not a symmetric function.
-       Unlike most other scores, R^2 score may be negative (it need not actually
-       be the square of a quantity R).
-       This metric is not well-defined for single samples and will return a NaN
-       value if n_samples is less than two.
-       References
-       ----------
-       <https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449>
-       
-       `Wikipedia entry on the Coefficient of determination
-       <https://en.wikipedia.org/wiki/Coefficient_of_determination>`
-    */
-
-    # Initialize check values
-    scalar nonzero_denominator = 0
-    scalar nonzero_numerator = 0
-    scalar valid_score = 0
+function matrix r2_stats (matrix y_true "T by 1 vector of realizations",
+                          matrix y_pred "T by 1 vector of estimated values")
+    /* Helper function for computing different R-square statistics. */
 
     matrix y_true = vec(y_true)
     matrix y_pred = vec(y_pred)
@@ -272,16 +299,62 @@ function scalar r2_score (matrix y_true "T by 1 vector of realizations",
         return NA
     endif
 
+    scalar T = rows(y_true)
+
+    matrix R = NA*zeros(3,1)
+    R[1] = r2_quad_corr(&y_true, &y_pred)
+    R[2] = r2_score(&y_true, &y_pred)
+    rnameset(R, "R2_quad_corr R2_score")
+
+    return R
+end function
+
+
+function scalar r2_quad_corr (const matrix *y_true,
+                              const matrix *y_pred)
+    /* R-square based on quadratic correlation */
+    return corr(y_true, y_pred)^2
+end function
+
+
+function scalar r2_score (const matrix *y_true,
+                          const matrix *y_pred)
+    /* R^2 (coefficient of determination) regression score function.
+       Best possible score is 1.0 and it can be negative (because the
+       model can be arbitrarily worse). A constant model that always
+       predicts the expected value of y, disregarding the input features,
+       would get a R^2 score of 0.0.
+
+       Notes
+       -----
+       This is not a symmetric function.
+       Unlike most other scores, R^2 score may be negative (it need not actually
+       be the square of a quantity R).
+       This metric is not well-defined for single samples and will return a NaN
+       value if n_samples is less than two.
+       References
+       ----------
+       <https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449>
+
+       `Wikipedia entry on the Coefficient of determination
+       <https://en.wikipedia.org/wiki/Coefficient_of_determination>`
+    */
+
+    # Initialize check values
+    scalar nonzero_denominator = 0
+    scalar nonzero_numerator = 0
+    scalar valid_score = 0
+
     # Compute statistics
     scalar numerator = sumc( (y_true-y_pred).^2)
     scalar denominator = sumc( (y_true-mean(y_true)).^2 )
-    
+
     scalar nonzero_denominator = (denominator!=0) ? 1 : nonzero_denominator
     scalar nonzero_numerator = (numerator!=0) ? 1 : nonzero_numerator
 
     scalar valid_score = (nonzero_denominator && nonzero_numerator) ? 1 : valid_score
-    
+
     scalar output_scores = 1
-    
+
     return (valid_score) ? (1-numerator/denominator) : output_scores
 end function

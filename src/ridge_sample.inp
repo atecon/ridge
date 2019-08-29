@@ -42,5 +42,10 @@ print b_ridge
 matrix r2_scores = b_ridge.r2_scores
 r2_scores
 
-matrix r2 = b_ridge.r2				# quadrierte Korrel. zwischen y und yhat
-r2
+matrix r2_quad_corr = b_ridge.r2_quad_corr				# quadrierte Korrel. zwischen y und yhat
+r2_quad_corr
+
+matrix aic = b_ridge.aic
+aic
+matrix bic = b_ridge.bic
+bic
