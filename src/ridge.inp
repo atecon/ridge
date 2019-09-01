@@ -50,7 +50,6 @@ function bundle ridge (matrix lambdas "Penalty parameters",
 
     print_ridge_results(&self, printout)
 
-
     # attached column names to matrices
     add_column_names_matrices(&self)
     
@@ -125,7 +124,7 @@ function void loop_through_lambda_values (bundle *self)
         self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
 
         # get number of ridge parameters
-        self.num_parameters[i] = get_numparam_ridge(singular_value, self.lambdas[i])
+        self.num_parameters[i] = number_of_parameter(singular_value, self.lambdas[i])
 
         matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(self.resids[,i].^2), rows(self.my))
         self.aic[i] = aic_bic[1]
@@ -273,7 +272,7 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
 end function
 
 
-function scalar get_numparam_ridge (const matrix singular_value, const scalar lambda)
+function scalar number_of_parameter (const matrix singular_value, const scalar lambda)
     /* Compute squared singular_values + the number of ridge parameters */
     singular_value_sq = vec(singular_value.^2)    
 
