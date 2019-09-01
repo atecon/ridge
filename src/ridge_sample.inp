@@ -49,10 +49,15 @@ num_parameters
 
 matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
 r2_scores
-matrix r2_quad_corr = b_ridge.r2_quad_corr				# squared correlation between reaizations 'y' and fitted values 'yhat'
-r2_quad_corr
+matrix r2_qcorr = b_ridge.r2_qcorr						# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr
+matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr_adjusted
 
 matrix aic = b_ridge.aic
 aic
 matrix bic = b_ridge.bic
 bic
+
+matrix gcv = b_ridge.gcv
+gcv

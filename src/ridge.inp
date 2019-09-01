@@ -50,12 +50,33 @@ function bundle ridge (matrix lambdas "Penalty parameters",
 
     print_ridge_results(&self, printout)
 
+
+    # attached column names to matrices
+    add_column_names_matrices(&self)
+    
     # copy to output
     return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
       "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
-      "r2_quad_corr", self.r2_quad_corr, "aic", self.aic, "bic", self.bic, \
-      "num_parameters", self.num_parameters)
+      "r2_qcorr", self.r2_qcorr, "r2_qcorr_adjusted", self.r2_qcorr_adj, \
+      "aic", self.aic, "bic", self.bic, "gcv", self.gcv, "num_parameters", self.num_parameters)
 
+end function
+
+function void add_column_names_matrices (bundle *self)
+    /* Add lambda values as string values to name columns of matrices */
+
+    strings str_lambdas = array(self.n_lambdas)
+    loop i=1..self.n_lambdas -q
+        str_lambdas[i] = sprintf("λ=%.4f", self.lambdas[i])
+    endloop
+
+    strings to_be_named = defarray("betas", "tstats", "resids", "s2s", "r2_scores", \
+      "r2_qcorr", "r2_qcorr_adj", "aic", "bic", "gcv", "num_parameters")
+      
+    loop i=1..nelem(to_be_named) -q
+        string item = sprintf("self.%s", to_be_named[i])
+        cnameset(@item, str_lambdas)
+    endloop
 end function
 
 
@@ -109,25 +130,27 @@ function void loop_through_lambda_values (bundle *self)
         matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(self.resids[,i].^2), rows(self.my))
         self.aic[i] = aic_bic[1]
         self.bic[i] = aic_bic[2]
+        self.gcv[i] = generalized_cv(self.resids[,i], rows(self.my), self.num_parameters[i])
 
         # Compute r-square
-        matrix r_squares = r2_stats({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]))
-        self.r2_quad_corr[i] = r_squares[1]
-        self.r2_scores[i] = r_squares[2]
-
+        matrix r_squares = r2_stats({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]), self.num_parameters[i])
+        self.r2_qcorr[i] = r_squares[1]
+        self.r2_qcorr_adj[i] = r_squares[2]
+        self.r2_scores[i] = r_squares[3]
+        
     endloop
 end function
 
 
 function void print_ridge_results (bundle *self, const bool printout)
-    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "No. of parameters", "R^2", "R^2 score", \
-      "AIC", "BIC")
+    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "No. of parameters", \
+      "R^2", "R^2 (adj)", "R^2 score", "AIC", "BIC", "G-CV")
 
     print "Ridge regression results"
     loop i = 1..self.n_lambdas -q
         matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.num_parameters[i] | self.r2_quad_corr[i] | \
-          self.r2_scores[i] | self.aic[i] | self.bic[i]
+        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.num_parameters[i] | self.r2_qcorr[i] | \
+        self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i] | self.gcv[i]
         modprint cmat lbl extra
     endloop
 end function
@@ -155,8 +178,9 @@ function void initialize_storage_matrices (bundle *self)
     matrix self.aic = NA*zeros(1, self.n_lambdas)
     matrix self.bic = NA*zeros(1, self.n_lambdas)
     matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
-    matrix self.r2_quad_corr = NA*zeros(1, self.n_lambdas)
-    matrix self.r2_quad_corr_adj = NA*zeros(1, self.n_lambdas)
+    matrix self.r2_qcorr = NA*zeros(1, self.n_lambdas)
+    matrix self.r2_qcorr_adj = NA*zeros(1, self.n_lambdas)
+    matrix self.gcv = NA*zeros(1, self.n_lambdas)
 end function
 
 
@@ -269,7 +293,8 @@ end function
 
 
 function matrix r2_stats (matrix y_true "T by 1 vector of realizations",
-                          matrix y_pred "T by 1 vector of estimated values")
+                          matrix y_pred "T by 1 vector of estimated values",
+                          const scalar num_parameters "No. of parameters")
     /* Helper function for computing different R-square statistics. */
 
     matrix y_true = vec(y_true)
@@ -288,23 +313,33 @@ function matrix r2_stats (matrix y_true "T by 1 vector of realizations",
         return NA
     endif
 
-    scalar T = rows(y_true)
-
     matrix R = NA*zeros(3,1)
-    R[1] = r2_quad_corr(&y_true, &y_pred)
-    R[2] = r2_score(&y_true, &y_pred)
-    rnameset(R, "R2_quad_corr R2_score")
+    R[1] = r2_qcorr(&y_true, &y_pred)
+    R[2] = r2_qcorr_adjusted(R[1], rows(y_true), num_parameters)
+    R[3] = r2_score(&y_true, &y_pred)
+    rnameset(R, "r2_qcorr r2_qcorr_adj r2_score")
 
     return R
 end function
 
 
-function scalar r2_quad_corr (const matrix *y_true,
+function scalar r2_qcorr (const matrix *y_true,
                               const matrix *y_pred)
     /* R-square based on quadratic correlation */
     return corr(y_true, y_pred)^2
 end function
 
+
+function scalar r2_qcorr_adjusted (const scalar r2 "R-square from r2_qcorr()",
+  const int n "Sample length",
+  const scalar num_parameters "No. of ridge parameters used")
+    /* Adjusted R-square based on quadratic correlation */
+    
+    scalar nominator = n-1
+    scalar denominator = n-num_parameters-1
+    
+    return 1 - (1-r2) * nominator/denominator
+end function
 
 
 function scalar r2_score (const matrix *y_true,
@@ -348,3 +383,11 @@ function scalar r2_score (const matrix *y_true,
 
     return (valid_score) ? (1-numerator/denominator) : output_scores
 end function
+
+function scalar generalized_cv (const matrix resids,
+                                const int N "Sample length",
+                                const scalar num_parameters)
+    /* Compute generalized cross-validation statistics */
+    
+    return meanc(resids / (1-num_parameters/N))
+end functions
