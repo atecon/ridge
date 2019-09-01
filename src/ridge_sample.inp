@@ -44,12 +44,12 @@ print b_ridge
 matrix coeffs = b_ridge.coeffs
 coeffs
 
-matrix df = b_ridge.df									# D-o-F
-df
+matrix num_parameters = b_ridge.num_parameters			# no. of parameters
+num_parameters
 
-matrix r2_scores = b_ridge.r2_scores
+matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
 r2_scores
-matrix r2_quad_corr = b_ridge.r2_quad_corr				# quadrierte Korrel. zwischen y und yhat
+matrix r2_quad_corr = b_ridge.r2_quad_corr				# squared correlation between reaizations 'y' and fitted values 'yhat'
 r2_quad_corr
 
 matrix aic = b_ridge.aic

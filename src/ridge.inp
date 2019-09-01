@@ -54,7 +54,7 @@ function bundle ridge (matrix lambdas "Penalty parameters",
     return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
       "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
       "r2_quad_corr", self.r2_quad_corr, "aic", self.aic, "bic", self.bic, \
-      "df", self.df)
+      "num_parameters", self.num_parameters)
 
 end function
 
@@ -81,7 +81,8 @@ function void loop_through_lambda_values (bundle *self)
     scalar idx = 1+self.wconst
     loop i=1..self.n_lambdas -q
 
-        matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX)
+        matrix singular_value = {}
+        matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX, , &singular_value)
 
         self.betas[idx:,i] = temp[,1]
         self.betaCovs[i] = temp[, 2:]
@@ -102,11 +103,10 @@ function void loop_through_lambda_values (bundle *self)
         self.betas[1,i] = (self.wconst) ? meanc(self.resids[,i]) : self.betas[1,i]
         self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
 
+        # get number of ridge parameters
+        self.num_parameters[i] = get_numparam_ridge(singular_value, self.lambdas[i])
 
-        # degree-of-freedom
-        self.df[i] = tr(ridge_hmat(self.lambdas[i], self.my, self.mX))
-
-        matrix aic_bic = ridge_aic_bic(self.df[i], sumc(self.resids[,i].^2), rows(self.my))
+        matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(self.resids[,i].^2), rows(self.my))
         self.aic[i] = aic_bic[1]
         self.bic[i] = aic_bic[2]
 
@@ -120,15 +120,18 @@ end function
 
 
 function void print_ridge_results (bundle *self, const bool printout)
-    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD")
+    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "No. of parameters", "R^2", "R^2 score", \
+      "AIC", "BIC")
 
     print "Ridge regression results"
     loop i = 1..self.n_lambdas -q
         matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-        matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
+        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.num_parameters[i] | self.r2_quad_corr[i] | \
+          self.r2_scores[i] | self.aic[i] | self.bic[i]
         modprint cmat lbl extra
     endloop
 end function
+
 
 function void stdize_y_and_x (bundle *self)
     /* Demeaning series y and list X and compute associated std.-errors. */
@@ -148,7 +151,7 @@ function void initialize_storage_matrices (bundle *self)
     matrix self.s2s = zeros(self.n_lambdas, 1)
     matrices self.betaCovs = array(self.n_lambdas)
     
-    matrix self.df = NA*zeros(1, self.n_lambdas)
+    matrix self.num_parameters = NA*zeros(1, self.n_lambdas)
     matrix self.aic = NA*zeros(1, self.n_lambdas)
     matrix self.bic = NA*zeros(1, self.n_lambdas)
     matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
@@ -161,6 +164,7 @@ function matrix ridge_svd (const scalar lambda,
                            const matrix my,
                            const matrix mX,
                            matrix *resids[null],
+                           matrix *sv[null] "Singular values",
                            bool withcov[1])
     # Ridge function using SVD
     # my: Tx1 vector
@@ -245,34 +249,21 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
 end function
 
 
-function matrix ridge_hmat (const scalar lambda,
-                            const matrix my,
-                            const matrix mX,
-                            const bool use_svd[1])
-    /* Compute the H matrix using ridge */
-    
-    if use_svd
-        matrix out, U, Vt	# Vt: V transposed
-        matrix sv = svd(mX, &U, &Vt)
-        matrix E_lda_row = 1 / (sv.^2 + lambda)
-        matrix ridgeI = (Vt' .* E_lda_row) * Vt
-    else
-        matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
-    endif
+function scalar get_numparam_ridge (const matrix singular_value, const scalar lambda)
+    /* Compute squared singular_values + the number of ridge parameters */
+    singular_value_sq = vec(singular_value.^2)    
 
-    return mX*ridgeI*mX'
+    return sumc( singular_value_sq ./ (singular_value_sq + lambda) )
 end function
 
 
-function matrix ridge_aic_bic (const scalar df "Degrees of freedom",
-                               const scalar RSS,
+function matrix ridge_aic_bic (const scalar num_param "Number of parameters",
+                               const scalar RSS "Residual sum of squares",
                                const int N "No. of observations")
-    /* Compute both AIC and BIC criteria for ridge regression */
-    
+    /* Compute both AIC and BIC criteria for ridge regression */    
     scalar s = N*log(RSS)
-    scalar aic = s+2*df
-    scalar bic = s+df*log(N)
-
+    scalar aic = s+2*num_param
+    scalar bic = s+num_param*log(N)
     return aic | bic
 end function
 
