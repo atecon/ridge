@@ -9,7 +9,7 @@ function bundle ridge (matrix lambdas "Penalty parameters",
        Returns a bundle with:
        coeffs: KxL matrix of ridge estimators, L being number of lambdas;
        If a constant term was originally included, its coefficient
-       is estimated as mean(y - Xtilde'beta), where Xtilde does not
+       is estimated as mean(y - X_without_const'beta), where X_without_const does not
        contain the constant.
        tstats: KxL matrix of t-statistics; no tstat is available for
        the constant term, so if a constant term was given then
@@ -34,8 +34,9 @@ function bundle ridge (matrix lambdas "Penalty parameters",
     series self.y = y
 
     # check for constant
-    list self.Xtilde = X - const
-    self.wconst = nelem(self.Xtilde) < nelem(X) ? 1 : 0
+    list self.X = X
+    list self.X_without_const = X - const
+    self.wconst = nelem(self.X_without_const) < nelem(X) ? 1 : 0
 
     # standardize and save factors for later
     stdize_y_and_x(&self)
@@ -87,7 +88,7 @@ end function
 
 function void get_xreorder_list (bundle *self, const list X)
     if self.wconst
-        list self.Xreorder = const self.Xtilde
+        list self.Xreorder = const self.X_without_const
     else
         list self.Xreorder = X
     endif
@@ -113,7 +114,7 @@ function void loop_through_lambda_values (bundle *self)
         self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
 
         # construct residuals -- may have non-zero mean
-        self.resids[,i] = get_residuals({self.y}, {self.Xtilde}, \
+        self.resids[,i] = get_residuals({self.y}, {self.X_without_const}, \
           self.betas[idx:,i]) # original data (w/o const)
 
         # estimate residual variance
@@ -138,8 +139,7 @@ function void loop_through_lambda_values (bundle *self)
         self.gcv[i] = generalized_cv_stats(resids_demeaned, rows(self.my), self.num_parameters[i])
 
         # Compute r-square
-        matrix y_pred = get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i])
-        y_pred = (self.wconst) ? (y_pred + self.betas[1:,i]) : y_pred			# consider constant
+        matrix y_pred = get_y_pred({self.X}, self.betas[,i])			# consider constant if present
 
         matrix r_squares = r2_stats({self.y}, y_pred, self.num_parameters[i])
         self.r2_qcorr[i] = r_squares[1]
@@ -169,13 +169,13 @@ function void stdize_y_and_x (bundle *self)
     matrix my = cdemean({self.y})
     scalar self.ysd = sdc(my)
     self.my = my ./ self.ysd
-    matrix mX = cdemean({self.Xtilde})
+    matrix mX = cdemean({self.X_without_const})
     matrix self.Xsd = sdc(mX)			# gives row vector
     self.mX = mX ./ self.Xsd
 end function
 
 function void initialize_storage_matrices (bundle *self)
-    scalar k = (self.wconst==1) ? (nelem(self.Xtilde)+1) : nelem(self.Xtilde)
+    scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : nelem(self.X_without_const)
     matrix self.betas = NA*zeros(k, self.n_lambdas)
     matrix self.tstats = NA*zeros(k, self.n_lambdas)
     matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
@@ -352,7 +352,7 @@ function scalar r2_qcorr_adjusted (const scalar r2 "R-square from r2_qcorr()",
 end function
 
 
-function scalar r2_score (const matrix *y_true "",
+function scalar r2_score (const matrix *y_true,
                           const matrix *y_pred "Must contain constant (bias) if present")
     /* R^2 (coefficient of determination) regression score function.
        Best possible score is 1.0 and it can be negative (because the

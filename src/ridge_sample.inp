@@ -18,6 +18,8 @@ smpl --no-missing LHS RHS
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge 
 
+stop
+
 # compare with the (computationally) naive alternative
 # (matrix-based function)
 matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
