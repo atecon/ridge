@@ -124,12 +124,12 @@ function void loop_through_lambda_values (bundle *self)
         self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
 
         # get number of ridge parameters
-        self.num_parameters[i] = number_of_parameter(singular_value, self.lambdas[i])
+        self.num_parameters[i] = effective_num_of_params(singular_value, self.lambdas[i])
 
         matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(self.resids[,i].^2), rows(self.my))
         self.aic[i] = aic_bic[1]
         self.bic[i] = aic_bic[2]
-        self.gcv[i] = generalized_cv(self.resids[,i], rows(self.my), self.num_parameters[i])
+        self.gcv[i] = generalized_cv_stats(self.resids[,i], rows(self.my), self.num_parameters[i])
 
         # Compute r-square
         matrix r_squares = r2_stats({self.y}, get_y_pred({self.Xtilde}, self.betas[1+self.wconst:,i]), self.num_parameters[i])
@@ -272,10 +272,12 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
 end function
 
 
-function scalar number_of_parameter (const matrix singular_value, const scalar lambda)
-    /* Compute squared singular_values + the number of ridge parameters */
+function scalar effective_num_of_params (const matrix singular_value, const scalar lambda)
+    /* Compute the effective number of parameters based on squared
+    singular_values and the number of ridge parameters. This should be equal to
+    tr(H). */
+    
     singular_value_sq = vec(singular_value.^2)    
-
     return sumc( singular_value_sq ./ (singular_value_sq + lambda) )
 end function
 
@@ -383,10 +385,15 @@ function scalar r2_score (const matrix *y_true,
     return (valid_score) ? (1-numerator/denominator) : output_scores
 end function
 
-function scalar generalized_cv (const matrix resids,
-                                const int N "Sample length",
-                                const scalar num_parameters)
-    /* Compute generalized cross-validation statistics */
-    
-    return meanc(resids / (1-num_parameters/N))
-end functions
+function scalar generalized_cv_stats (const matrix resids,
+                                const int N[1::] "Sample length",
+                                const scalar effective_num_of_params)
+    /* Compute generalized cross-validation statistics. */
+
+    return meanc( (resids / (1 - effective_num_of_num_params/N)).^2 )
+end function
+
+
+
+
+
