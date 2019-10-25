@@ -10,8 +10,10 @@ matrix lambdas = {0.36, 0.5}
 
 # define the variables
 series LHS = ldiff(PAU)
-list RHS = const ldiff(PUS) IUS IAU
- 
+list RHS = const ldiff(PUS) IUS IAU(0 to -4)
+
+smpl --no-missing LHS RHS
+
 # run the main function with default values
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge 
@@ -24,7 +26,7 @@ print rn
 ## compare with OLS results 
 print "-- OLS comparison --"
 ols LHS RHS
-  
+
 ## now test an underdetermined case, #param > #obs:
 numk = 20
 N = 10
@@ -38,3 +40,24 @@ eval ridge_svd(lambdas[1], my, mX)[,1]
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge
+
+matrix coeffs = b_ridge.coeffs
+coeffs
+
+matrix num_parameters = b_ridge.num_parameters			# no. of parameters
+num_parameters
+
+matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
+r2_scores
+matrix r2_qcorr = b_ridge.r2_qcorr						# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr
+matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr_adjusted
+
+matrix aic = b_ridge.aic
+aic
+matrix bic = b_ridge.bic
+bic
+
+matrix gcv = b_ridge.gcv
+gcv
