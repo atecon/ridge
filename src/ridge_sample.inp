@@ -1,7 +1,7 @@
 set verbose off
 clear 
 
-#include ridge.gfn --force
+include ridge.gfn --force
 
 open australia.gdt --quiet
 
