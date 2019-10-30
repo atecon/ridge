@@ -41,7 +41,6 @@ eval ridge_svd(lambdas[1], my, mX)[,1]
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge
-stop
 matrix coeffs = b_ridge.coeffs
 coeffs
 
