@@ -24,9 +24,9 @@ function bundle ridge (const matrix lambdas "Penalty parameters",
     self.lambdas = vec(lambdas)
     self.n_lambdas = nelem(self.lambdas)
 
-    if $datatype==1
+    if $datatype == 1
         smpl --no-missing y X
-    elif $datatype==2
+    elif $datatype == 2
         smpl --contiguous y X
     endif
 
@@ -52,7 +52,7 @@ function bundle ridge (const matrix lambdas "Penalty parameters",
 
     # attached column names to matrices
     add_column_names_matrices(&self)
-    
+
     # copy to output
     return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
       "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
@@ -71,7 +71,7 @@ function void add_column_names_matrices (bundle *self)
 
     strings to_be_named = defarray("betas", "tstats", "resids", "s2s", "r2_scores", \
       "r2_qcorr", "r2_qcorr_adj", "aic", "bic", "gcv", "num_parameters")
-      
+
     loop i=1..nelem(to_be_named) -q
         string item = sprintf("self.%s", to_be_named[i])
         cnameset(@item, str_lambdas)
@@ -80,12 +80,16 @@ end function
 
 
 function void set_rowname_betas_and_tstats (bundle *self)
+    /* Add row labels. */
+
     rnameset(self.betas, varnames(self.Xreorder))
     rnameset(self.tstats, varnames(self.Xreorder))
 end function
 
 
 function void get_xreorder_list (bundle *self, const list X)
+    /* Make sure intercept is at first position when model includes constant. */
+
     if self.wconst
         list self.Xreorder = const self.X_without_const
     else
@@ -96,11 +100,11 @@ end function
 
 function void loop_through_lambda_values (bundle *self)
 /* Helper function estimating ridge + retrieving various stats
-    for different shrinkage lambda parameters */
+    for different shrinkage lambda parameters. */
 
-    scalar idx = 1+self.wconst
+    scalar idx = 1 + self.wconst
+
     loop i=1..self.n_lambdas -q
-
         matrix singular_value = {}
         matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX, , &singular_value)
 
@@ -123,14 +127,13 @@ function void loop_through_lambda_values (bundle *self)
         if self.wconst
             scalar resid_mean = meanc(self.resids[,i])
             self.betas[1,i] = resid_mean
-            # self.tstats[1,i] is already "NA" due to initialization
         else
             scalar resid_mean = 0
         endif
 
         # get number of ridge parameters
         self.num_parameters[i] = effective_num_of_params(singular_value, self.lambdas[i])
-        
+
         matrix resids_demeaned = self.resids[,i] - resid_mean
         matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(resids_demeaned.^2), rows(self.my))
         self.aic[i] = aic_bic[1]
@@ -144,20 +147,25 @@ function void loop_through_lambda_values (bundle *self)
         self.r2_qcorr[i] = r_squares[1]
         self.r2_qcorr_adj[i] = r_squares[2]
         self.r2_scores[i] = r_squares[3]
-        
+
     endloop
 end function
 
 
 function void print_ridge_results (bundle *self, const bool printout)
-    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "G-CV", "Effective num. params", \
-      "R^2", "R^2 (adj)", "R^2 score", "AIC", "BIC")
+    /* Print idge results. */
+
+    strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "G-CV", \
+      "Effective num. params", "R^2", "R^2 (adj)", "R^2 score", "AIC", "BIC")
 
     print "Ridge regression results"
-    loop i = 1..self.n_lambdas -q
+
+    loop i=1..self.n_lambdas -q
         matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | self.r2_qcorr[i] | \
-        self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
+
+        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | \
+          self.r2_qcorr[i] | self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
+
         modprint cmat lbl extra
     endloop
 end function
@@ -165,6 +173,7 @@ end function
 
 function void stdize_y_and_x (bundle *self)
     /* Demeaning series y and list X and compute associated std.-errors. */
+
     matrix my = cdemean({self.y})
     scalar self.ysd = sdc(my)
     self.my = my ./ self.ysd
@@ -173,14 +182,17 @@ function void stdize_y_and_x (bundle *self)
     self.mX = mX ./ self.Xsd
 end function
 
+
 function void initialize_storage_matrices (bundle *self)
+    /* Add to selb bundle relevant empty matrices for storing stuff. */
+
     scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : nelem(self.X_without_const)
     matrix self.betas = NA*zeros(k, self.n_lambdas)
     matrix self.tstats = NA*zeros(k, self.n_lambdas)
     matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
     matrix self.s2s = zeros(self.n_lambdas, 1)
     matrices self.betaCovs = array(self.n_lambdas)
-    
+
     matrix self.num_parameters = NA*zeros(1, self.n_lambdas)
     matrix self.aic = NA*zeros(1, self.n_lambdas)
     matrix self.bic = NA*zeros(1, self.n_lambdas)
@@ -192,17 +204,17 @@ end function
 
 
 function matrix ridge_svd (const scalar lambda,
-                           const matrix my,
-                           const matrix mX,
-                           matrix *resids[null],
+                           const matrix my "Tx1 vector",
+                           const matrix mX "TxK design matrix",
+                           matrix *resids[null] "Vector holding computed residuals",
                            matrix *sv[null] "Singular values",
                            bool withcov[1])
-    # Ridge function using SVD
-    # my: Tx1 vector
-    # mX: TxK design matrix
+    /* Ridge function using SVD */
+
     matrix out, U, Vt	# Vt: V transposed
     matrix sv = svd(mX, &U, &Vt)
     matrix E_lda_row = 1 / (sv.^2 + lambda)
+
     if withcov	# we will need the ridge inverse later
         # ridge inverse
         matrix ridgeI = (Vt' .* E_lda_row) * Vt
@@ -216,24 +228,28 @@ function matrix ridge_svd (const scalar lambda,
         # beta, using the SVD output differently
         out = ( Vt' .* (sv .* E_lda_row) ) * U'my
     endif
+
     if exists(resids)
         resids = withcov ? res : my - mX*out
     endif
+
     return out
 end function
 
 function matrix ridge_naive (const scalar lambda,
-                             const matrix my,
-                             const matrix mX,
-                             matrix *resids[null],
+                             const matrix my "Tx1 vector",
+                             const matrix mX "TxK design matrix",
+                             matrix *resids[null] "Vector holding computed residuals",
                              bool withcov[1])
-    # Ridge function using matrix algebraic formulas directly
-    # Returns a K x (1 + K) matrix if withcov==1,
-    # the first col is the estimate beta_ridge,
-    # followed by the KxK matrix Cov(beta_ridge).
-    # Otherwise just a Kx1 matrix.
+    /* Ridge function using matrix algebraic formulas directly
+       Returns a K x (1 + K) matrix if withcov==1,
+       the first col is the estimate beta_ridge,
+       followed by the KxK matrix Cov(beta_ridge).
+    Otherwise just a Kx1 matrix. */
+
     # If 'resids' is provided, it will be filled with residuals.
     matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
+
     # beta
     matrix out = ridgeI * mX'my
     if exists(resids) || withcov
@@ -247,25 +263,28 @@ function matrix ridge_naive (const scalar lambda,
             resids = res
         endif
     endif
+
     return out
 end function
 
 function matrix ridge_aux (const scalar lambda,
-                           const matrix my,
-                           const matrix mX)
-    # Ridge function using auxiliary OLS
-    # Here we do not obtain the Cov(b) matrix,
-    # return is just Kx1 beta vector.
-    K = cols(mX)
+                           const matrix my "Tx1 vector",
+                           const matrix mX "TxK design matrix")
+    /* Ridge function using auxiliary OLS.
+       Here we do not obtain the Cov(b) matrix,
+      return is just Kx1 beta vector. */
+
+    scalar K = cols(mX)
     matrix mXa = mX | (sqrt(lambda) * I(K))
-    matrix mya = my | zeros(K,1)
+    matrix mya = my | zeros(K, 1)
     matrix beta = mols(mya, mXa)
+
     return beta
 end function
 
 function matrix get_y_pred (const matrix mX, const matrix bhat)
     /* Helper function for computing fitted values*/
-    return mX*bhat
+    return mX * bhat
 end function
 
 
@@ -281,11 +300,12 @@ end function
 
 
 function scalar effective_num_of_params (const matrix singular_value, const scalar lambda)
-    /* Compute the effective number of parameters based on squared
-    singular_values and the number of ridge parameters. This should be equal to
+/* Compute the effective number of parameters based on squared
+   singular_values and the number of ridge parameters. This should be equal to
     tr(H). */
-    
-    singular_value_sq = vec(singular_value.^2)    
+
+    singular_value_sq = vec(singular_value.^2)
+
     return sumc( singular_value_sq ./ (singular_value_sq + lambda) )
 end function
 
@@ -293,10 +313,12 @@ end function
 function matrix ridge_aic_bic (const scalar num_param "Number of parameters",
                                const scalar RSS "Residual sum of squares",
                                const int N "No. of observations")
-    /* Compute both AIC and BIC criteria for ridge regression */    
-    scalar s = N*log(RSS)
-    scalar aic = s+2*num_param
-    scalar bic = s+num_param*log(N)
+    /* Compute both AIC and BIC criteria for ridge regression */
+
+    scalar s = N * log(RSS)
+    scalar aic = s + 2 * num_param
+    scalar bic = s + num_param * log(N)
+
     return aic | bic
 end function
 
@@ -333,20 +355,20 @@ end function
 
 
 function scalar r2_qcorr (const matrix *y_true,
-                              const matrix *y_pred)
-    /* R-square based on quadratic correlation */
+                          const matrix *y_pred)
+    /* R-square based on quadratic correlation. */
     return corr(y_true, y_pred)^2
 end function
 
 
 function scalar r2_qcorr_adjusted (const scalar r2 "R-square from r2_qcorr()",
-  const int n "Sample length",
-  const scalar num_parameters "No. of ridge parameters used")
+      const int n "Sample length",
+      const scalar num_parameters "No. of ridge parameters used")
     /* Adjusted R-square based on quadratic correlation */
-    
-    scalar nominator = n-1
-    scalar denominator = n-num_parameters-1
-    
+
+    scalar nominator = n - 1
+    scalar denominator = n - num_parameters - 1
+
     return 1 - (1-r2) * nominator/denominator
 end function
 
@@ -393,9 +415,10 @@ function scalar r2_score (const matrix *y_true,
     return (valid_score) ? (1-numerator/denominator) : output_scores
 end function
 
+
 function scalar generalized_cv_stats (const matrix resids,
-                                const int N[1::] "Sample length",
-                                const scalar effective_num_of_params)
+                                      const int N[1::] "Sample length",
+                                      const scalar effective_num_of_params)
     /* Compute generalized cross-validation statistics. */
 
     return meanc( (resids / (1 - effective_num_of_params/N)).^2 )

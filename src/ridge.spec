@@ -1,10 +1,10 @@
-author = Sven Schreiber
+author = Sven Schreiber and Artur Tarassow
 email = svetosch@gmx.net
-version = 1.1
-date = 2019-07-21
+version = 1.2
+date = 2019-10-30
 description = Ridge regression
 tags = C13 C20
-min-version = 2016c
+min-version = 2018a
 data-requirement = no-data-ok
 gui-main = ridge
 label = Ridge regression

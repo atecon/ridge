@@ -1,9 +1,9 @@
-# ridge_sample.inp script for the ridge.gfn package 
-# by Sven Schreiber 
+set verbose off
+clear 
 
-#include ridge.gfn --force 
+#include ridge.gfn --force
 
-open australia
+open australia.gdt --quiet
 
 # specify some penalty values
 matrix lambdas = {0.36, 0.5}
