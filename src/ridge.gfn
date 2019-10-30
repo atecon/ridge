@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gretl-functions>
-<gretl-function-package name="ridge" no-data-ok="true" minver="2016c">
-<author email="svetosch@gmx.net">Sven Schreiber</author>
+<gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
+<author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
 <version>1.1</version>
-<date>2019-07-21</date>
+<date>2019-10-30</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
 <menu-attachment>MAINWIN/Model/LinearModels</menu-attachment>
 <help>
-Help text for the ridge.gfn package by Sven Schreiber (please ask
-questions and report bugs on the gretl mailing list if possible)
+Help text for the ridge.gfn package by Sven Schreiber and Artur Tarassow (please ask questions and report bugs on the gretl mailing list if possible).
 
 This package implements the ridge regression, a penalized (or 
 shrinkage) version of linear regression.
@@ -43,15 +42,32 @@ Returns a bundle with:
     estimated as mean(y - Xtilde'beta), where Xtilde does not contain 
     the constant.  
 - tstats: KxL matrix of t-statistics; no tstat is available for the 
-constant term, so if a constant term was given then tstats[1] is NA.
+	constant term, so if a constant term was given then tstats[1] is NA.
 - vcvs: L-element array of covariance matrices of estimated 
-coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term 
-was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, 
-where Ri is the inverse of (X'X + lambda * I). (No direct matrix 
-inversion is done, though, for numerical reasons.)
+	coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, where Ri is the inverse of (X'X + lambda * I). (No direct matrix inversion is done, though, for numerical reasons.)
 - uhats: TxL matrix of residual vectors, one for each lambda. 
-- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one 
-for each lambda.
+- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one
+	for each lambda.
+- num_parameters: 1xL matrix holding the effective number of
+	parameters based on squared singular_values and the number of
+	ridge parameters
+- aic: 1xL matrix holding the information criteria computed as
+	aic = (N * log(RSS)) + 			2 * num_parameters
+- bic: 1xL matrix holding the information criteria computed as
+	bic = (N * log(RSS)) + log(N) * num_parameters
+- r2_qcorr: 1xL matrix holding the R-square based on quadratic
+	correlation between actuals 	('y ') and in-sample fitted
+	values ('yhat').
+- r2_qcorr_adjusted: 1xL matrix holding the adjusted version of
+	'r2_qcorr':
+	r2_qcorr_adjusted = 1-(1-r2_qcorr) * (N-1)/(N-num_parameters-1)
+- r2_qcorr: 1xL matrix holding the coefficient of determination
+	regression score function. Best possible score is 1.0 and it can be negative (because the model can be arbitrarily worse). A
+	constant model that always predicts the expected value of y,
+	disregarding the input features, would get a R^2 score of 0.0. For details see &lt;https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449&gt;
+- gcv: 1xL matrix holding the generalized cross-validation statistics:
+	gcv = mean{ [uhat / (1-num_parameters/N)].^2 }
+	See for details Patrick Breheny's slides: &lt;https://web.as.uky.edu/statistics/users/pbreheny/764-F11/notes/9-1.pdf&gt;
 -------------------
 
 For script use (e.g., in simulations) there are also three 
@@ -88,25 +104,24 @@ takes the following arguments:
 Returns a Kx1 coefficient matrix.
 -------------------
 
-To do:
-R2
-
 Changelog:
-- 1.1., July 2019: refactoring
+- 1.1, October 2019:
+	+ Refactored code
+	+ Bundle now returns num_parameters, AIC/ BIC information criteria, R-square statistics and the generalized cross-validation statistics
 - 1.0, September 2017: initial release
 </help>
 <gretl-function name="ridge" type="bundle" pkg-role="gui-main">
  <params count="4">
-  <param name="lambdas" type="matrix">
+  <param name="lambdas" type="matrix" const="true">
 <description>Penalty parameters</description>
   </param>
-  <param name="y" type="series">
+  <param name="y" type="series" const="true">
 <description>Dependent variable</description>
   </param>
   <param name="X" type="list" const="true">
 <description>List of regressors</description>
   </param>
-  <param name="printout" type="bool" default="1">
+  <param name="printout" type="bool" default="1" const="true">
 <description>Print results?</description>
   </param>
  </params>
@@ -117,7 +132,7 @@ A scalar input for lambdas is treated by gretl as 1x1 matrix.
 Returns a bundle with:
 coeffs: KxL matrix of ridge estimators, L being number of lambdas;
 If a constant term was originally included, its coefficient
-is estimated as mean(y - Xtilde'beta), where Xtilde does not
+is estimated as mean(y - X_without_const'beta), where X_without_const does not
 contain the constant.
 tstats: KxL matrix of t-statistics; no tstat is available for
 the constant term, so if a constant term was given then
@@ -126,43 +141,52 @@ vcvs: L-element array of matrices, each Kbar x Kbar.
 Kbar is K, or K-1 if a constant term was originally included.
 uhats: TxL matrix of residual vectors, one for each lambda
 s2s: Lx1 vector of residual variance estimates (res'res / T)
-FIXME: R2 ?
 */
 bundle self = null
 self.lambdas = vec(lambdas)
 self.n_lambdas = nelem(self.lambdas)
-if $datatype==1
+if $datatype == 1
   smpl --no-missing y X
-elif $datatype==2
+elif $datatype == 2
   smpl --contiguous y X
 endif
 series self.y = y
 # check for constant
-list self.Xtilde = X - const
-self.wconst = nelem(self.Xtilde) &lt; nelem(X) ? 1 : 0
+list self.X = X
+list self.X_without_const = X - const
+self.wconst = nelem(self.X_without_const) &lt; nelem(X) ? 1 : 0
 # standardize and save factors for later
-demean_y_and_x(&amp;self)
+stdize_y_and_x(&amp;self)
 ## cycle through the various lambdas
 initialize_storage_matrices(&amp;self)
 loop_through_lambda_values(&amp;self)
 get_xreorder_list(&amp;self, X)
 set_rowname_betas_and_tstats(&amp;self)
 print_ridge_results(&amp;self, printout)
+# attached column names to matrices
+add_column_names_matrices(&amp;self)
 # copy to output
-return defbundle(&quot;coeffs&quot;, self.betas, &quot;tstats&quot;, self.tstats, &quot;vcvs&quot;, self.betaCovs, &quot;uhats&quot;, self.resids, &quot;s2s&quot;, self.s2s)
+return defbundle(&quot;coeffs&quot;, self.betas, &quot;tstats&quot;, self.tstats, &quot;vcvs&quot;, self.betaCovs, &quot;uhats&quot;, self.resids, &quot;s2s&quot;, self.s2s, &quot;r2_scores&quot;, self.r2_scores, &quot;r2_qcorr&quot;, self.r2_qcorr, &quot;r2_qcorr_adjusted&quot;, self.r2_qcorr_adj, &quot;aic&quot;, self.aic, &quot;bic&quot;, self.bic, &quot;gcv&quot;, self.gcv, &quot;num_parameters&quot;, self.num_parameters)
 </code>
 </gretl-function>
 <gretl-function name="ridge_svd" type="matrix">
- <params count="5">
+ <params count="6">
   <param name="lambda" type="scalar" const="true"/>
-  <param name="my" type="matrix" const="true"/>
-  <param name="mX" type="matrix" const="true"/>
-  <param name="resids" type="matrixref" optional="true"/>
+  <param name="my" type="matrix" const="true">
+<description>Tx1 vector</description>
+  </param>
+  <param name="mX" type="matrix" const="true">
+<description>TxK design matrix</description>
+  </param>
+  <param name="resids" type="matrixref" optional="true">
+<description>Vector holding computed residuals</description>
+  </param>
+  <param name="sv" type="matrixref" optional="true">
+<description>Singular values</description>
+  </param>
   <param name="withcov" type="bool" default="1"/>
  </params>
-<code># Ridge function using SVD
-# my: Tx1 vector
-# mX: TxK design matrix
+<code>/* Ridge function using SVD */
 matrix out, U, Vt	# Vt: V transposed
 matrix sv = svd(mX, &amp;U, &amp;Vt)
 matrix E_lda_row = 1 / (sv.^2 + lambda)
@@ -188,16 +212,20 @@ return out
 <gretl-function name="ridge_naive" type="matrix">
  <params count="5">
   <param name="lambda" type="scalar" const="true"/>
-  <param name="my" type="matrix" const="true"/>
-  <param name="mX" type="matrix" const="true"/>
-  <param name="resids" type="matrixref" optional="true"/>
+  <param name="my" type="matrix" const="true">
+<description>Tx1 vector</description>
+  </param>
+  <param name="mX" type="matrix" const="true">
+<description>TxK design matrix</description>
+  </param>
+  <param name="resids" type="matrixref" optional="true">
+<description>Vector holding computed residuals</description>
+  </param>
   <param name="withcov" type="bool" default="1"/>
  </params>
-<code># Ridge function using matrix algebraic formulas directly
-# Returns a K x (1 + K) matrix if withcov==1,
-# the first col is the estimate beta_ridge,
-# followed by the KxK matrix Cov(beta_ridge).
-# Otherwise just a Kx1 matrix.
+<code>/* Ridge function using matrix algebraic formulas directly
+Returns a K x (1 + K) matrix if withcov==1, the first col is the estimate beta_ridge, followed by the KxK matrix Cov(beta_ridge).
+Otherwise just a Kx1 matrix. */
 # If 'resids' is provided, it will be filled with residuals.
 matrix ridgeI = inv(mX'mX + lambda * I(cols(mX)))
 # beta
@@ -219,24 +247,44 @@ return out
 <gretl-function name="ridge_aux" type="matrix">
  <params count="3">
   <param name="lambda" type="scalar" const="true"/>
-  <param name="my" type="matrix" const="true"/>
-  <param name="mX" type="matrix" const="true"/>
+  <param name="my" type="matrix" const="true">
+<description>Tx1 vector</description>
+  </param>
+  <param name="mX" type="matrix" const="true">
+<description>TxK design matrix</description>
+  </param>
  </params>
-<code># Ridge function using auxiliary OLS
-# Here we do not obtain the Cov(b) matrix,
-# return is just Kx1 beta vector.
-K = cols(mX)
+<code>/* Ridge function using auxiliary OLS.
+Here we do not obtain the Cov(b) matrix, return is just Kx1 beta vector. */
+scalar K = cols(mX)
 matrix mXa = mX | (sqrt(lambda) * I(K))
-matrix mya = my | zeros(K,1)
+matrix mya = my | zeros(K, 1)
 matrix beta = mols(mya, mXa)
 return beta
+</code>
+</gretl-function>
+<gretl-function name="add_column_names_matrices" type="void" private="1">
+ <params count="1">
+  <param name="self" type="bundleref"/>
+ </params>
+<code>/* Add lambda values as string values to name columns of matrices */
+strings str_lambdas = array(self.n_lambdas)
+loop i=1..self.n_lambdas -q
+  str_lambdas[i] = sprintf(&quot;λ=%.4f&quot;, self.lambdas[i])
+endloop
+strings to_be_named = defarray(&quot;betas&quot;, &quot;tstats&quot;, &quot;resids&quot;, &quot;s2s&quot;, &quot;r2_scores&quot;, &quot;r2_qcorr&quot;, &quot;r2_qcorr_adj&quot;, &quot;aic&quot;, &quot;bic&quot;, &quot;gcv&quot;, &quot;num_parameters&quot;)
+loop i=1..nelem(to_be_named) -q
+  string item = sprintf(&quot;self.%s&quot;, to_be_named[i])
+  cnameset(@item, str_lambdas)
+endloop
 </code>
 </gretl-function>
 <gretl-function name="set_rowname_betas_and_tstats" type="void" private="1">
  <params count="1">
   <param name="self" type="bundleref"/>
  </params>
-<code>rnameset(self.betas, varnames(self.Xreorder))
+<code>/* Add row labels. */
+rnameset(self.betas, varnames(self.Xreorder))
 rnameset(self.tstats, varnames(self.Xreorder))
 </code>
 </gretl-function>
@@ -245,8 +293,9 @@ rnameset(self.tstats, varnames(self.Xreorder))
   <param name="self" type="bundleref"/>
   <param name="X" type="list" const="true"/>
  </params>
-<code>if self.wconst
-  list self.Xreorder = const self.Xtilde
+<code>/* Make sure intercept is at first position when model includes constant. */
+if self.wconst
+  list self.Xreorder = const self.X_without_const
 else
   list self.Xreorder = X
 endif
@@ -257,10 +306,11 @@ endif
   <param name="self" type="bundleref"/>
  </params>
 <code>/* Helper function estimating ridge + retrieving various stats
-for different shrinkage lambda parameters */
-scalar idx = 1+self.wconst
+for different shrinkage lambda parameters. */
+scalar idx = 1 + self.wconst
 loop i=1..self.n_lambdas -q
-  matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX)
+  matrix singular_value = {}
+  matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX, , &amp;singular_value)
   self.betas[idx:,i] = temp[,1]
   self.betaCovs[i] = temp[, 2:]
   self.tstats[idx:,i] = self.betas[idx:,i] ./ sqrt(diag(temp[,2:]))
@@ -268,12 +318,29 @@ loop i=1..self.n_lambdas -q
   self.betas[idx:,i] = self.betas[idx:,i] .* (self.ysd ./ self.Xsd')
   self.betaCovs[i] = self.betaCovs[i] * self.ysd^2 ./ (self.Xsd'self.Xsd)
   # construct residuals -- may have non-zero mean
-  self.resids[,i] = get_residuals({self.y}, {self.Xtilde}, self.betas[idx:,i]) # original data (w/o const)
+  self.resids[,i] = get_residuals({self.y}, {self.X_without_const}, self.betas[idx:,i]) # original data (w/o const)
   # estimate residual variance
   self.s2s[i] = get_residuals_variance(cdemean(self.resids[,i]), self.my)
   # insert the constant term
-  self.betas[1,i] = (self.wconst) ? meanc(self.resids[,i]) : self.betas[1,i]
-  self.tstats[1,i] = (self.wconst) ? NA : self.tstats[1,i]
+  if self.wconst
+    scalar resid_mean = meanc(self.resids[,i])
+    self.betas[1,i] = resid_mean
+  else
+    scalar resid_mean = 0
+  endif
+  # get number of ridge parameters
+  self.num_parameters[i] = effective_num_of_params(singular_value, self.lambdas[i])
+  matrix resids_demeaned = self.resids[,i] - resid_mean
+  matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(resids_demeaned.^2), rows(self.my))
+  self.aic[i] = aic_bic[1]
+  self.bic[i] = aic_bic[2]
+  self.gcv[i] = generalized_cv_stats(resids_demeaned, rows(self.my), self.num_parameters[i])
+  # Compute r-square
+  matrix y_pred = get_y_pred({self.X}, self.betas[,i])			# consider constant if present
+  matrix r_squares = r2_stats({self.y}, y_pred, self.num_parameters[i])
+  self.r2_qcorr[i] = r_squares[1]
+  self.r2_qcorr_adj[i] = r_squares[2]
+  self.r2_scores[i] = r_squares[3]
 endloop
 </code>
 </gretl-function>
@@ -282,16 +349,17 @@ endloop
   <param name="self" type="bundleref"/>
   <param name="printout" type="bool" const="true"/>
  </params>
-<code>strings lbl = varnames(self.Xreorder) + defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;)
+<code>/* Print idge results. */
+strings lbl = varnames(self.Xreorder) + defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;, &quot;G-CV&quot;, &quot;Effective num. params&quot;, &quot;R^2&quot;, &quot;R^2 (adj)&quot;, &quot;R^2 score&quot;, &quot;AIC&quot;, &quot;BIC&quot;)
 print &quot;Ridge regression results&quot;
-loop i = 1..self.n_lambdas -q
+loop i=1..self.n_lambdas -q
   matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-  matrix extra = self.lambdas[i] | sqrt(self.s2s[i])
+  matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | self.r2_qcorr[i] | self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
   modprint cmat lbl extra
 endloop
 </code>
 </gretl-function>
-<gretl-function name="demean_y_and_x" type="void" private="1">
+<gretl-function name="stdize_y_and_x" type="void" private="1">
  <params count="1">
   <param name="self" type="bundleref"/>
  </params>
@@ -299,7 +367,7 @@ endloop
 matrix my = cdemean({self.y})
 scalar self.ysd = sdc(my)
 self.my = my ./ self.ysd
-matrix mX = cdemean({self.Xtilde})
+matrix mX = cdemean({self.X_without_const})
 matrix self.Xsd = sdc(mX)			# gives row vector
 self.mX = mX ./ self.Xsd
 </code>
@@ -308,12 +376,29 @@ self.mX = mX ./ self.Xsd
  <params count="1">
   <param name="self" type="bundleref"/>
  </params>
-<code>scalar k = (self.wconst==1) ? (nelem(self.Xtilde)+1) : nelem(self.Xtilde)
-matrix self.betas = zeros(k, self.n_lambdas)
-matrix self.tstats = zeros(k, self.n_lambdas)
-matrix self.resids = zeros(rows(self.my), self.n_lambdas)
+<code>/* Add to selb bundle relevant empty matrices for storing stuff. */
+scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : nelem(self.X_without_const)
+matrix self.betas = NA*zeros(k, self.n_lambdas)
+matrix self.tstats = NA*zeros(k, self.n_lambdas)
+matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
 matrix self.s2s = zeros(self.n_lambdas, 1)
 matrices self.betaCovs = array(self.n_lambdas)
+matrix self.num_parameters = NA*zeros(1, self.n_lambdas)
+matrix self.aic = NA*zeros(1, self.n_lambdas)
+matrix self.bic = NA*zeros(1, self.n_lambdas)
+matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
+matrix self.r2_qcorr = NA*zeros(1, self.n_lambdas)
+matrix self.r2_qcorr_adj = NA*zeros(1, self.n_lambdas)
+matrix self.gcv = NA*zeros(1, self.n_lambdas)
+</code>
+</gretl-function>
+<gretl-function name="get_y_pred" type="matrix" private="1">
+ <params count="2">
+  <param name="mX" type="matrix" const="true"/>
+  <param name="bhat" type="matrix" const="true"/>
+ </params>
+<code>/* Helper function for computing fitted values*/
+return mX * bhat
 </code>
 </gretl-function>
 <gretl-function name="get_residuals" type="matrix" private="1">
@@ -322,8 +407,8 @@ matrices self.betaCovs = array(self.n_lambdas)
   <param name="mX" type="matrix" const="true"/>
   <param name="bhat" type="matrix" const="true"/>
  </params>
-<code>/* Helper function computing residuals */
-return my - mX*bhat
+<code>/* Helper function for computing residuals */
+return my - get_y_pred(mX, bhat)
 </code>
 </gretl-function>
 <gretl-function name="get_residuals_variance" type="scalar" private="1">
@@ -335,24 +420,170 @@ return my - mX*bhat
 return resids'resids / rows(mX)
 </code>
 </gretl-function>
+<gretl-function name="effective_num_of_params" type="scalar" private="1">
+ <params count="2">
+  <param name="singular_value" type="matrix" const="true"/>
+  <param name="lambda" type="scalar" const="true"/>
+ </params>
+<code>/* Compute the effective number of parameters based on squared
+singular_values and the number of ridge parameters. This should be equal to
+tr(H). */
+singular_value_sq = vec(singular_value.^2)
+return sumc( singular_value_sq ./ (singular_value_sq + lambda) )
+</code>
+</gretl-function>
+<gretl-function name="ridge_aic_bic" type="matrix" private="1">
+ <params count="3">
+  <param name="num_param" type="scalar" const="true">
+<description>Number of parameters</description>
+  </param>
+  <param name="RSS" type="scalar" const="true">
+<description>Residual sum of squares</description>
+  </param>
+  <param name="N" type="int" const="true">
+<description>No. of observations</description>
+  </param>
+ </params>
+<code>/* Compute both AIC and BIC criteria for ridge regression */
+scalar s = N * log(RSS)
+scalar aic = s + 2 * num_param
+scalar bic = s + num_param * log(N)
+return aic | bic
+</code>
+</gretl-function>
+<gretl-function name="r2_stats" type="matrix" private="1">
+ <params count="3">
+  <param name="y_true" type="matrix">
+<description>T by 1 vector of realizations</description>
+  </param>
+  <param name="y_pred" type="matrix">
+<description>T by 1 vector of estimated values</description>
+  </param>
+  <param name="num_parameters" type="scalar" const="true">
+<description>No. of parameters</description>
+  </param>
+ </params>
+<code>/* Helper function for computing different R-square statistics. */
+matrix y_true = vec(y_true)
+matrix y_pred = vec(y_pred)
+if rows(y_true) != rows(y_pred)
+  printf &quot;\nError: Vectors y_true and y_pred are of different length.\n&quot;
+  return NA
+endif
+if rows(y_pred)&lt;2
+  printf &quot;\nError: R^2 score is not well-defined with less than two samples.\n&quot;
+  return NA
+endif
+if isconst(y_true)
+  printf &quot;\nError: Vector y_true is constant.\n&quot;
+  return NA
+endif
+matrix R = NA * zeros(3,1)
+R[1] = r2_qcorr(&amp;y_true, &amp;y_pred)
+R[2] = r2_qcorr_adjusted(R[1], rows(y_true), num_parameters)
+R[3] = r2_score(&amp;y_true, &amp;y_pred)
+rnameset(R, &quot;r2_qcorr r2_qcorr_adj r2_score&quot;)
+return R
+</code>
+</gretl-function>
+<gretl-function name="r2_qcorr" type="scalar" private="1">
+ <params count="2">
+  <param name="y_true" type="matrixref" const="true"/>
+  <param name="y_pred" type="matrixref" const="true"/>
+ </params>
+<code>/* R-square based on quadratic correlation. */
+return corr(y_true, y_pred)^2
+</code>
+</gretl-function>
+<gretl-function name="r2_qcorr_adjusted" type="scalar" private="1">
+ <params count="3">
+  <param name="r2" type="scalar" const="true">
+<description>R-square from r2_qcorr()</description>
+  </param>
+  <param name="n" type="int" const="true">
+<description>Sample length</description>
+  </param>
+  <param name="num_parameters" type="scalar" const="true">
+<description>No. of ridge parameters used</description>
+  </param>
+ </params>
+<code>/* Adjusted R-square based on quadratic correlation */
+scalar nominator = n - 1
+scalar denominator = n - num_parameters - 1
+return 1 - (1-r2) * nominator/denominator
+</code>
+</gretl-function>
+<gretl-function name="r2_score" type="scalar" private="1">
+ <params count="2">
+  <param name="y_true" type="matrixref" const="true"/>
+  <param name="y_pred" type="matrixref" const="true">
+<description>Must contain constant (bias) if present</description>
+  </param>
+ </params>
+<code>/* R^2 (coefficient of determination) regression score function.
+Best possible score is 1.0 and it can be negative (because the
+model can be arbitrarily worse). A constant model that always
+predicts the expected value of y, disregarding the input features, would get a R^2 score of 0.0.
+Notes
+-----
+This is not a symmetric function.
+Unlike most other scores, R^2 score may be negative (it need not actually
+be the square of a quantity R).
+This metric is not well-defined for single samples and will return a NaN
+value if n_samples is less than two.
+References
+----------
+&lt;https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449&gt;
+`Wikipedia entry on the Coefficient of determination
+&lt;https://en.wikipedia.org/wiki/Coefficient_of_determination&gt;`
+*/
+# Initialize check values
+scalar nonzero_denominator = 0
+scalar nonzero_numerator = 0
+scalar valid_score = 0
+# Compute statistics
+scalar numerator = sumc( (y_true-y_pred).^2)
+scalar denominator = sumc( (y_true-mean(y_true)).^2 )
+scalar nonzero_denominator = (denominator!=0) ? 1 : nonzero_denominator
+scalar nonzero_numerator = (numerator!=0) ? 1 : nonzero_numerator
+scalar valid_score = (nonzero_denominator &amp;&amp; nonzero_numerator) ? 1 : valid_score
+scalar output_scores = 1
+return (valid_score) ? (1-numerator/denominator) : output_scores
+</code>
+</gretl-function>
+<gretl-function name="generalized_cv_stats" type="scalar" private="1">
+ <params count="3">
+  <param name="resids" type="matrix" const="true"/>
+  <param name="N" type="int" min="1" const="true">
+<description>Sample length</description>
+  </param>
+  <param name="effective_num_of_params" type="scalar" const="true"/>
+ </params>
+<code>/* Compute generalized cross-validation statistics. */
+return meanc( (resids / (1 - effective_num_of_params/N)).^2 )
+</code>
+</gretl-function>
 <sample-script>
-# ridge_sample.inp script for the ridge.gfn package 
-# by Sven Schreiber 
+set verbose off
+clear 
 
-#include ridge.gfn --force 
+#include ridge.gfn --force
 
-open australia
+open australia.gdt --quiet
 
 # specify some penalty values
 matrix lambdas = {0.36, 0.5}
 
 # define the variables
 series LHS = ldiff(PAU)
-list RHS = const ldiff(PUS) IUS IAU
- 
+list RHS = const ldiff(PUS) IUS IAU(0 to -4)
+
+smpl --no-missing LHS RHS
+
 # run the main function with default values
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge 
+
 
 # compare with the (computationally) naive alternative
 # (matrix-based function)
@@ -362,7 +593,7 @@ print rn
 ## compare with OLS results 
 print &quot;-- OLS comparison --&quot;
 ols LHS RHS
-  
+
 ## now test an underdetermined case, #param &gt; #obs:
 numk = 20
 N = 10
@@ -376,6 +607,27 @@ eval ridge_svd(lambdas[1], my, mX)[,1]
 RHS = RHS - const
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 print b_ridge
+stop
+matrix coeffs = b_ridge.coeffs
+coeffs
+
+matrix num_parameters = b_ridge.num_parameters			# no. of parameters
+num_parameters
+
+matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
+r2_scores
+matrix r2_qcorr = b_ridge.r2_qcorr						# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr
+matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	# squared correlation between reaizations 'y' and fitted values 'yhat'
+r2_qcorr_adjusted
+
+matrix aic = b_ridge.aic
+aic
+matrix bic = b_ridge.bic
+bic
+
+matrix gcv = b_ridge.gcv
+gcv
 </sample-script>
 </gretl-function-package>
 </gretl-functions>

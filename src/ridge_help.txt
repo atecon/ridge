@@ -1,5 +1,4 @@
-Help text for the ridge.gfn package by Sven Schreiber (please ask
-questions and report bugs on the gretl mailing list if possible)
+Help text for the ridge.gfn package by Sven Schreiber and Artur Tarassow (please ask questions and report bugs on the gretl mailing list if possible).
 
 This package implements the ridge regression, a penalized (or 
 shrinkage) version of linear regression.
@@ -32,15 +31,32 @@ Returns a bundle with:
     estimated as mean(y - Xtilde'beta), where Xtilde does not contain 
     the constant.  
 - tstats: KxL matrix of t-statistics; no tstat is available for the 
-constant term, so if a constant term was given then tstats[1] is NA.
+	constant term, so if a constant term was given then tstats[1] is NA.
 - vcvs: L-element array of covariance matrices of estimated 
-coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term 
-was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, 
-where Ri is the inverse of (X'X + lambda * I). (No direct matrix 
-inversion is done, though, for numerical reasons.)
+	coefficients, each Kbar x Kbar. Kbar is K, or K-1 if a constant term was originally included. Each vcv is calculated as s2 * Ri * X'X * Ri, where Ri is the inverse of (X'X + lambda * I). (No direct matrix inversion is done, though, for numerical reasons.)
 - uhats: TxL matrix of residual vectors, one for each lambda. 
-- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one 
-for each lambda.
+- s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one
+	for each lambda.
+- num_parameters: 1xL matrix holding the effective number of
+	parameters based on squared singular_values and the number of
+	ridge parameters
+- aic: 1xL matrix holding the information criteria computed as
+	aic = (N * log(RSS)) + 			2 * num_parameters
+- bic: 1xL matrix holding the information criteria computed as
+	bic = (N * log(RSS)) + log(N) * num_parameters
+- r2_qcorr: 1xL matrix holding the R-square based on quadratic
+	correlation between actuals 	('y ') and in-sample fitted
+	values ('yhat').
+- r2_qcorr_adjusted: 1xL matrix holding the adjusted version of
+	'r2_qcorr':
+	r2_qcorr_adjusted = 1-(1-r2_qcorr) * (N-1)/(N-num_parameters-1)
+- r2_qcorr: 1xL matrix holding the coefficient of determination
+	regression score function. Best possible score is 1.0 and it can be negative (because the model can be arbitrarily worse). A
+	constant model that always predicts the expected value of y,
+	disregarding the input features, would get a R^2 score of 0.0. For details see <https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449>
+- gcv: 1xL matrix holding the generalized cross-validation statistics:
+	gcv = mean{ [uhat / (1-num_parameters/N)].^2 }
+	See for details Patrick Breheny's slides: <https://web.as.uky.edu/statistics/users/pbreheny/764-F11/notes/9-1.pdf>
 -------------------
 
 For script use (e.g., in simulations) there are also three 
@@ -77,9 +93,8 @@ takes the following arguments:
 Returns a Kx1 coefficient matrix.
 -------------------
 
-To do:
-R2
-
 Changelog:
-- 1.1., July 2019: refactoring
+- 1.1, October 2019:
+	+ Refactored code
+	+ Bundle now returns num_parameters, AIC/ BIC information criteria, R-square statistics and the generalized cross-validation statistics
 - 1.0, September 2017: initial release
