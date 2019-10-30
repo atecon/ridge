@@ -1,7 +1,7 @@
-function bundle ridge (matrix lambdas "Penalty parameters",
-                       series y "Dependent variable",
+function bundle ridge (const matrix lambdas "Penalty parameters",
+                       const series y "Dependent variable",
                        const list X "List of regressors",
-                       bool printout[1] "Print results?")
+                       const bool printout[1] "Print results?")
     /* Input data is standardized before doing ridge.
        The output is rescaled to match the original data.
        Results for a constant (if present) are ordered first.
@@ -18,7 +18,6 @@ function bundle ridge (matrix lambdas "Penalty parameters",
        Kbar is K, or K-1 if a constant term was originally included.
        uhats: TxL matrix of residual vectors, one for each lambda
        s2s: Lx1 vector of residual variance estimates (res'res / T)
-       FIXME: R2 ?
     */
 
     bundle self = null
