@@ -63,7 +63,16 @@ diffmat_glmnet = ridge_coeff .- glmnet_coeff
 cnameset(diffmat_glmnet, "l=0 l=0.3 l=0.5 l=100")
 print diffmat_glmnet
 
+ratmat_glmnet = ridge_coeff ./ glmnet_coeff
+cnameset(ratmat_glmnet, "l=0 l=0.3 l=0.5 l=100")
+print ratmat_glmnet
+
+
 diffmat_mass = ridge_coeff[2:,] .- mass_coeff			# only slope coefficents
 cnameset(diffmat_mass, "l=0 l=0.3 l=0.5 l=100")
 print diffmat_mass
+
+ratmat_mass = ridge_coeff[2:,] ./ mass_coeff			# only slope coefficents
+cnameset(ratmat_mass, "l=0 l=0.3 l=0.5 l=100")
+print ratmat_mass
 
