@@ -1,0 +1,69 @@
+clear
+set verbose off
+include ridge.gfn --force
+
+open "/home/at/git/glmnet_wrapper/glmnet_QSE.csv"
+setobs 1 1 --special-time-series
+
+rename X1 Y
+list L = const dataset
+L -= Y
+#print L -o
+
+scalar lambda = 0.3
+
+mod_alpha0 = ridge(0, Y, L)
+mod_alpha03 = ridge(0.3, Y, L)
+mod_alpha05 = ridge(0.5, Y, L)
+mod_alpha100 = ridge(100, Y, L)
+
+matrix ridge_coeff = mod_alpha0.coeffs ~ mod_alpha03.coeffs ~ mod_alpha05.coeffs ~ mod_alpha100.coeffs
+ridge_coeff
+
+foreign language=R
+	library(glmnet)
+	data(QuickStartExample)
+	mod_alpha0 = glmnet(x, y, alpha = 0, lambda = 0)
+	mod_alpha03 = glmnet(x, y, alpha = 0, lambda = 0.3)
+	mod_alpha05 = glmnet(x, y, alpha = 0, lambda = 0.5)
+	mod_alpha100 = glmnet(x, y, alpha = 0, lambda = 100)
+
+	bhat_alpha0 <- coef(mod_alpha0)
+	bhat_alpha03 <- coef(mod_alpha03)
+	bhat_alpha05 <- coef(mod_alpha05)
+	bhat_alpha100 <- coef(mod_alpha100)
+
+	bhat_glmnet <- as.matrix(cbind(bhat_alpha0, bhat_alpha03, bhat_alpha05, bhat_alpha100))
+	gretl.export(bhat_glmnet)
+end foreign
+glmnet_coeff = mread("bhat_glmnet.mat", 1)
+glmnet_coeff
+
+
+foreign language=R
+	library(MASS)
+
+	mod_lambda0 <- lm.ridge(y ~ x, lambda = 0)
+	mod_lambda03 <- lm.ridge(y ~ x, lambda = 0.3)
+	mod_lambda05 <- lm.ridge(y ~ x, lambda = 0.5)
+	mod_lambda100 <- lm.ridge(y ~ x, lambda = 100)
+
+	bhat_mass <- as.matrix(cbind(mod_lambda0$coef,
+		                mod_lambda03$coef,
+		                mod_lambda05$coef,
+		                mod_lambda100$coef))
+
+	gretl.export(bhat_mass)
+end foreign
+mass_coeff = mread("bhat_mass.mat", 1)
+mass_coeff
+
+
+diffmat_glmnet = ridge_coeff .- glmnet_coeff
+cnameset(diffmat_glmnet, "l=0 l=0.3 l=0.5 l=100")
+print diffmat_glmnet
+
+diffmat_mass = ridge_coeff[2:,] .- mass_coeff			# only slope coefficents
+cnameset(diffmat_mass, "l=0 l=0.3 l=0.5 l=100")
+print diffmat_mass
+
