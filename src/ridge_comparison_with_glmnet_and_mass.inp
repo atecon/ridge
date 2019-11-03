@@ -2,15 +2,12 @@ clear
 set verbose off
 include ridge.gfn --force
 
-open "/home/at/git/glmnet_wrapper/glmnet_QSE.csv"
+open "/home/at/git/ridge/data/glmnet_QSE.csv"			# Set path to csv
 setobs 1 1 --special-time-series
 
 rename X1 Y
 list L = const dataset
 L -= Y
-#print L -o
-
-scalar lambda = 0.3
 
 mod_lambda0 = ridge(0, Y, L)
 mod_lambda03 = ridge(0.3, Y, L)
@@ -20,7 +17,9 @@ mod_lambda100 = ridge(100, Y, L)
 matrix ridge_coeff = mod_lambda0.coeffs ~ mod_lambda03.coeffs ~ mod_lambda05.coeffs ~ mod_lambda100.coeffs
 ridge_coeff
 
+
 foreign language=R
+	#install.packages("glmnet")			# must be installed
 	library(glmnet)
 	data(QuickStartExample)
 
@@ -46,7 +45,9 @@ end foreign
 glmnet_coeff = mread("bhat_glmnet.mat", 1)
 #glmnet_coeff
 
+
 foreign language=R
+	install.packages("MASS")			# must be installed
 	library(MASS)
 
 	mod_lambda0 <- lm.ridge(y ~ x, lambda = 0)

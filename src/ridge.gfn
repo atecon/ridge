@@ -3,7 +3,7 @@
 <gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
 <author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
 <version>1.1</version>
-<date>2019-11-01</date>
+<date>2019-11-03</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
@@ -20,6 +20,8 @@ the term (X'X + lambda * I), where lambda is a scalar penalty parameter
 calculate the solution is by a singular-value decomposition, and to work
 on the standardized variables (mean zero, unit variance). 
 For other options see below.
+
+Notice, for a given lambda values you will get different results when using the well-known glmnet-package for R (https://cran.r-project.org/web/packages/glmnet/index.html). This is due to the additional division by the number of observations, N, that GLMNET uses in their objective function and implicit standardization of Y by its sample standard deviation. For a comparison with glmnet and the MASS-package for R see here &lt;https://github.com/atecon/ridge/blob/master/src/ridge_comparison_with_glmnet_and_mass.inp&gt;.
 
 --------------------
 The main function is also called &quot;ridge&quot; and takes the following arguments:

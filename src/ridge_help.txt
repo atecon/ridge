@@ -10,6 +10,8 @@ calculate the solution is by a singular-value decomposition, and to work
 on the standardized variables (mean zero, unit variance). 
 For other options see below.
 
+Notice, for a given lambda values you will get different results when using the well-known glmnet-package for R (https://cran.r-project.org/web/packages/glmnet/index.html). This is due to the additional division by the number of observations, N, that GLMNET uses in their objective function and implicit standardization of Y by its sample standard deviation. For a comparison with glmnet and the MASS-package for R see here <https://github.com/atecon/ridge/blob/master/src/ridge_comparison_with_glmnet_and_mass.inp>.
+
 --------------------
 The main function is also called "ridge" and takes the following arguments:
 
