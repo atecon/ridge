@@ -30,9 +30,9 @@ foreign language=R
 	sd_y <- sqrt(var(y)*(n-1)/n)[1,1]
 
 	mod_lambda0 = glmnet(x, y, alpha = 0, lambda = 0)
-	mod_lambda03 = glmnet(x, y, alpha = 0, lambda = 0.3/sd_y*10/n)
-	mod_lambda05 = glmnet(x, y, alpha = 0, lambda = 0.5/sd_y*10/n)
-	mod_lambda100 = glmnet(x, y, alpha = 0, lambda = 100/sd_y*10/n)
+	mod_lambda03 = glmnet(x, y, alpha = 0, lambda = 0.3 * (sd_y/n) )
+	mod_lambda05 = glmnet(x, y, alpha = 0, lambda = 0.5 * (sd_y/n) )
+	mod_lambda100 = glmnet(x, y, alpha = 0, lambda = 100 * (sd_y/n) )
 
 	bhat_lambda0 <- coef(mod_lambda0)
 	bhat_lambda03 <- coef(mod_lambda03)
@@ -47,7 +47,7 @@ glmnet_coeff = mread("bhat_glmnet.mat", 1)
 
 
 foreign language=R
-	install.packages("MASS")			# must be installed
+	#install.packages("MASS")			# must be installed
 	library(MASS)
 
 	mod_lambda0 <- lm.ridge(y ~ x, lambda = 0)
