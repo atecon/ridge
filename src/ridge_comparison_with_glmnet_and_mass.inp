@@ -23,10 +23,17 @@ ridge_coeff
 foreign language=R
 	library(glmnet)
 	data(QuickStartExample)
+
+	# glmnet uses a different lambda-definition compared to standard textbooks.
+	# This requires some standardization, see here:
+	# https://stats.stackexchange.com/a/260648
+	n    <- 100
+	sd_y <- sqrt(var(y)*(n-1)/n)[1,1]
+
 	mod_alpha0 = glmnet(x, y, alpha = 0, lambda = 0)
-	mod_alpha03 = glmnet(x, y, alpha = 0, lambda = 0.3)
-	mod_alpha05 = glmnet(x, y, alpha = 0, lambda = 0.5)
-	mod_alpha100 = glmnet(x, y, alpha = 0, lambda = 100)
+	mod_alpha03 = glmnet(x, y, alpha = 0, lambda = 0.3/sd_y*10/n)
+	mod_alpha05 = glmnet(x, y, alpha = 0, lambda = 0.5/sd_y*10/n)
+	mod_alpha100 = glmnet(x, y, alpha = 0, lambda = 100/sd_y*10/n)
 
 	bhat_alpha0 <- coef(mod_alpha0)
 	bhat_alpha03 <- coef(mod_alpha03)
@@ -37,8 +44,7 @@ foreign language=R
 	gretl.export(bhat_glmnet)
 end foreign
 glmnet_coeff = mread("bhat_glmnet.mat", 1)
-glmnet_coeff
-
+#glmnet_coeff
 
 foreign language=R
 	library(MASS)
@@ -56,23 +62,15 @@ foreign language=R
 	gretl.export(bhat_mass)
 end foreign
 mass_coeff = mread("bhat_mass.mat", 1)
-mass_coeff
+#mass_coeff
 
 
-diffmat_glmnet = ridge_coeff .- glmnet_coeff
+diffmat_glmnet = ridge_coeff ./ glmnet_coeff
 cnameset(diffmat_glmnet, "l=0 l=0.3 l=0.5 l=100")
 print diffmat_glmnet
 
-ratmat_glmnet = ridge_coeff ./ glmnet_coeff
-cnameset(ratmat_glmnet, "l=0 l=0.3 l=0.5 l=100")
-print ratmat_glmnet
 
-
-diffmat_mass = ridge_coeff[2:,] .- mass_coeff			# only slope coefficents
+diffmat_mass = ridge_coeff[2:,] ./ mass_coeff			# only slope coefficents
 cnameset(diffmat_mass, "l=0 l=0.3 l=0.5 l=100")
 print diffmat_mass
-
-ratmat_mass = ridge_coeff[2:,] ./ mass_coeff			# only slope coefficents
-cnameset(ratmat_mass, "l=0 l=0.3 l=0.5 l=100")
-print ratmat_mass
 
