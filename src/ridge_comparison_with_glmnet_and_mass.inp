@@ -12,12 +12,12 @@ L -= Y
 
 scalar lambda = 0.3
 
-mod_alpha0 = ridge(0, Y, L)
-mod_alpha03 = ridge(0.3, Y, L)
-mod_alpha05 = ridge(0.5, Y, L)
-mod_alpha100 = ridge(100, Y, L)
+mod_lambda0 = ridge(0, Y, L)
+mod_lambda03 = ridge(0.3, Y, L)
+mod_lambda05 = ridge(0.5, Y, L)
+mod_lambda100 = ridge(100, Y, L)
 
-matrix ridge_coeff = mod_alpha0.coeffs ~ mod_alpha03.coeffs ~ mod_alpha05.coeffs ~ mod_alpha100.coeffs
+matrix ridge_coeff = mod_lambda0.coeffs ~ mod_lambda03.coeffs ~ mod_lambda05.coeffs ~ mod_lambda100.coeffs
 ridge_coeff
 
 foreign language=R
@@ -30,17 +30,17 @@ foreign language=R
 	n    <- 100
 	sd_y <- sqrt(var(y)*(n-1)/n)[1,1]
 
-	mod_alpha0 = glmnet(x, y, alpha = 0, lambda = 0)
-	mod_alpha03 = glmnet(x, y, alpha = 0, lambda = 0.3/sd_y*10/n)
-	mod_alpha05 = glmnet(x, y, alpha = 0, lambda = 0.5/sd_y*10/n)
-	mod_alpha100 = glmnet(x, y, alpha = 0, lambda = 100/sd_y*10/n)
+	mod_lambda0 = glmnet(x, y, alpha = 0, lambda = 0)
+	mod_lambda03 = glmnet(x, y, alpha = 0, lambda = 0.3/sd_y*10/n)
+	mod_lambda05 = glmnet(x, y, alpha = 0, lambda = 0.5/sd_y*10/n)
+	mod_lambda100 = glmnet(x, y, alpha = 0, lambda = 100/sd_y*10/n)
 
-	bhat_alpha0 <- coef(mod_alpha0)
-	bhat_alpha03 <- coef(mod_alpha03)
-	bhat_alpha05 <- coef(mod_alpha05)
-	bhat_alpha100 <- coef(mod_alpha100)
+	bhat_lambda0 <- coef(mod_lambda0)
+	bhat_lambda03 <- coef(mod_lambda03)
+	bhat_lambda05 <- coef(mod_lambda05)
+	bhat_lambda100 <- coef(mod_lambda100)
 
-	bhat_glmnet <- as.matrix(cbind(bhat_alpha0, bhat_alpha03, bhat_alpha05, bhat_alpha100))
+	bhat_glmnet <- as.matrix(cbind(bhat_lambda0, bhat_lambda03, bhat_lambda05, bhat_lambda100))
 	gretl.export(bhat_glmnet)
 end foreign
 glmnet_coeff = mread("bhat_glmnet.mat", 1)
