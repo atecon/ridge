@@ -1,4 +1,8 @@
-Package for running Ridge-regression using gretl. This does not involve any cross-validation.
+Package for running Ridge-regression using gretl.
+
+Authors: Sven Schreiber and Artur Tarassow
+
+This does not involve any cross-validation for obtaining some optimal shrinkage hyper-parameter 'lambda'. However, stay tuned for another package doing cross-validation coming soon! ;-)
 
 Point coefficients as well as associated standard errors are returned for pre-defined lambda values.
 
