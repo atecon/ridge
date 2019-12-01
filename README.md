@@ -1,1 +1,1 @@
-Refactoring Sven Schreiber's 'ridge' package for #Gretl including.
+Package for running Ridge-regression using gretl. This does not involve any cross-validation.
