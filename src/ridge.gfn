@@ -2,8 +2,8 @@
 <gretl-functions>
 <gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
 <author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
-<version>1.1</version>
-<date>2019-11-03</date>
+<version>1.11</version>
+<date>2019-12-30</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
@@ -23,12 +23,12 @@ on the standardized variables (mean zero, unit variance).
 For other options see below.
 
 Notice, for a given lambda values you will get different results when
-using the well-known glmnet-package for R
+using the well-known glmnet package for R
 (https://cran.r-project.org/web/packages/glmnet/index.html). This is due
 to the additional division by the number of observations, N, that GLMNET
-uses in their objective function and implicit standardization of Y by
+uses in its objective function and implicit standardization of Y by
 its sample standard deviation. For a comparison with glmnet and the
-MASS-package for R see here
+MASS-package for R see here:
 &lt;https://github.com/atecon/ridge/blob/master/src/ridge_comparison_with_glmnet_and_mass.inp&gt;.
 
 --------------------
@@ -118,6 +118,7 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
+- 1.11, December 2019: fix bug that suppressing printout did not work
 - 1.1, November 2019:
     Refactored code, require gretl 2018a
     Bundle now returns num_parameters, AIC/ BIC information criteria, R-square
@@ -176,11 +177,13 @@ initialize_storage_matrices(&amp;self)
 loop_through_lambda_values(&amp;self)
 get_xreorder_list(&amp;self, X)
 set_rowname_betas_and_tstats(&amp;self)
-print_ridge_results(&amp;self, printout)
+if printout
+  print_ridge_results(&amp;self)
+endif
 # attached column names to matrices
 add_column_names_matrices(&amp;self)
 # copy to output
-return defbundle(&quot;coeffs&quot;, self.betas, &quot;tstats&quot;, self.tstats, &quot;vcvs&quot;, self.betaCovs, &quot;uhats&quot;, self.resids, &quot;s2s&quot;, self.s2s, &quot;r2_scores&quot;, self.r2_scores, &quot;r2_qcorr&quot;, self.r2_qcorr, &quot;r2_qcorr_adjusted&quot;, self.r2_qcorr_adj, &quot;aic&quot;, self.aic, &quot;bic&quot;, self.bic, &quot;gcv&quot;, self.gcv, &quot;num_parameters&quot;, self.num_parameters)
+return defbundle(&quot;coeffs&quot;,self.betas, &quot;tstats&quot;,self.tstats, &quot;vcvs&quot;,self.betaCovs, &quot;uhats&quot;,self.resids, &quot;s2s&quot;,self.s2s, &quot;r2_scores&quot;,self.r2_scores, &quot;r2_qcorr&quot;,self.r2_qcorr, &quot;r2_qcorr_adjusted&quot;,self.r2_qcorr_adj, &quot;aic&quot;,self.aic, &quot;bic&quot;,self.bic, &quot;gcv&quot;,self.gcv, &quot;num_parameters&quot;,self.num_parameters)
 </code>
 </gretl-function>
 <gretl-function name="ridge_svd" type="matrix">
@@ -350,7 +353,7 @@ loop i=1..self.n_lambdas -q
   self.bic[i] = aic_bic[2]
   self.gcv[i] = generalized_cv_stats(resids_demeaned, rows(self.my), self.num_parameters[i])
   # Compute r-square
-  matrix y_pred = get_y_pred({self.X}, self.betas[,i])			# consider constant if present
+  matrix y_pred = get_y_pred({self.X}, self.betas[,i]) # consider const if present
   matrix r_squares = r2_stats({self.y}, y_pred, self.num_parameters[i])
   self.r2_qcorr[i] = r_squares[1]
   self.r2_qcorr_adj[i] = r_squares[2]
@@ -359,14 +362,13 @@ endloop
 </code>
 </gretl-function>
 <gretl-function name="print_ridge_results" type="void" private="1">
- <params count="2">
+ <params count="1">
   <param name="self" type="bundleref"/>
-  <param name="printout" type="bool" const="true"/>
  </params>
-<code>/* Print idge results. */
+<code>/* Print ridge results. */
 strings lbl = varnames(self.Xreorder) + defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;, &quot;G-CV&quot;, &quot;Effective num. params&quot;, &quot;R^2&quot;, &quot;R^2 (adj)&quot;, &quot;R^2 score&quot;, &quot;AIC&quot;, &quot;BIC&quot;)
 print &quot;Ridge regression results&quot;
-loop i=1..self.n_lambdas -q
+loop i = 1..self.n_lambdas -q
   matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
   matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | self.r2_qcorr[i] | self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
   modprint cmat lbl extra
@@ -547,7 +549,8 @@ This metric is not well-defined for single samples and will return a NaN
 value if n_samples is less than two.
 References
 ----------
-&lt;https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449&gt;
+&lt;https://github.com/scikit-learn/scikit-learn/blob/
+1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449&gt;
 `Wikipedia entry on the Coefficient of determination
 &lt;https://en.wikipedia.org/wiki/Coefficient_of_determination&gt;`
 */

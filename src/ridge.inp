@@ -48,16 +48,19 @@ function bundle ridge (const matrix lambdas "Penalty parameters",
 
     set_rowname_betas_and_tstats(&self)
 
-    print_ridge_results(&self, printout)
+	if printout
+        print_ridge_results(&self)
+    endif
 
     # attached column names to matrices
     add_column_names_matrices(&self)
 
     # copy to output
-    return defbundle("coeffs", self.betas, "tstats", self.tstats, "vcvs", self.betaCovs, \
-      "uhats", self.resids, "s2s", self.s2s, "r2_scores", self.r2_scores, \
-      "r2_qcorr", self.r2_qcorr, "r2_qcorr_adjusted", self.r2_qcorr_adj, \
-      "aic", self.aic, "bic", self.bic, "gcv", self.gcv, "num_parameters", self.num_parameters)
+    return defbundle("coeffs",self.betas, "tstats",self.tstats, \
+      "vcvs",self.betaCovs, "uhats",self.resids, "s2s",self.s2s, \
+      "r2_scores",self.r2_scores, "r2_qcorr",self.r2_qcorr, \
+      "r2_qcorr_adjusted",self.r2_qcorr_adj, "aic",self.aic, \
+      "bic",self.bic, "gcv",self.gcv, "num_parameters",self.num_parameters)
 
 end function
 
@@ -135,13 +138,15 @@ function void loop_through_lambda_values (bundle *self)
         self.num_parameters[i] = effective_num_of_params(singular_value, self.lambdas[i])
 
         matrix resids_demeaned = self.resids[,i] - resid_mean
-        matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(resids_demeaned.^2), rows(self.my))
+        matrix aic_bic = ridge_aic_bic(self.num_parameters[i], sumc(resids_demeaned.^2), \
+               rows(self.my))
         self.aic[i] = aic_bic[1]
         self.bic[i] = aic_bic[2]
-        self.gcv[i] = generalized_cv_stats(resids_demeaned, rows(self.my), self.num_parameters[i])
+        self.gcv[i] = generalized_cv_stats(resids_demeaned, rows(self.my), \
+               self.num_parameters[i])
 
         # Compute r-square
-        matrix y_pred = get_y_pred({self.X}, self.betas[,i])			# consider constant if present
+        matrix y_pred = get_y_pred({self.X}, self.betas[,i]) # consider const if present
 
         matrix r_squares = r2_stats({self.y}, y_pred, self.num_parameters[i])
         self.r2_qcorr[i] = r_squares[1]
@@ -152,19 +157,20 @@ function void loop_through_lambda_values (bundle *self)
 end function
 
 
-function void print_ridge_results (bundle *self, const bool printout)
-    /* Print idge results. */
+function void print_ridge_results (bundle *self)
+    /* Print ridge results. */
 
     strings lbl = varnames(self.Xreorder) + defarray("Penalty", "Resid SD", "G-CV", \
       "Effective num. params", "R^2", "R^2 (adj)", "R^2 score", "AIC", "BIC")
 
     print "Ridge regression results"
 
-    loop i=1..self.n_lambdas -q
+    loop i = 1..self.n_lambdas -q
         matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
 
-        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | \
-          self.r2_qcorr[i] | self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
+        matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | \
+               self.num_parameters[i] | self.r2_qcorr[i] | self.r2_qcorr_adj[i] | \
+               self.r2_scores[i] | self.aic[i] | self.bic[i]
 
         modprint cmat lbl extra
     endloop
@@ -186,7 +192,8 @@ end function
 function void initialize_storage_matrices (bundle *self)
     /* Add to selb bundle relevant empty matrices for storing stuff. */
 
-    scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : nelem(self.X_without_const)
+    scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : \
+           nelem(self.X_without_const)
     matrix self.betas = NA*zeros(k, self.n_lambdas)
     matrix self.tstats = NA*zeros(k, self.n_lambdas)
     matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
@@ -299,7 +306,8 @@ function scalar get_residuals_variance (const matrix resids, const matrix mX)
 end function
 
 
-function scalar effective_num_of_params (const matrix singular_value, const scalar lambda)
+function scalar effective_num_of_params (const matrix singular_value, 
+                                         const scalar lambda)
 /* Compute the effective number of parameters based on squared
    singular_values and the number of ridge parameters. This should be equal to
     tr(H). */
@@ -390,7 +398,8 @@ function scalar r2_score (const matrix *y_true,
        value if n_samples is less than two.
        References
        ----------
-       <https://github.com/scikit-learn/scikit-learn/blob/1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449>
+       <https://github.com/scikit-learn/scikit-learn/blob/
+        1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449>
 
        `Wikipedia entry on the Coefficient of determination
        <https://en.wikipedia.org/wiki/Coefficient_of_determination>`
