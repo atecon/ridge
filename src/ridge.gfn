@@ -3,7 +3,7 @@
 <gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
 <author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
 <version>1.11</version>
-<date>2019-12-30</date>
+<date>2020-01-08</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
@@ -39,8 +39,8 @@ The main function is also called &quot;ridge&quot; and takes the following argum
 (2) series y: required, the dependent variable
 (3) list X: required, the K regressors. If a constant is included, it is 
     moved to the first position.
-(4) boolean printout: optional, default is 1 (=yes). Set to 0 to just get 
-    the return bundle and not print anything.
+(4) int printout: optional, default is 2 (=full). Set to 0 to just get 
+    the return bundle and not print anything, or 1 to get just a summary.
 
 Input data is standardized before doing ridge. The output is rescaled to 
 match the original data, but since the demeaned data are used, no standard 
@@ -118,7 +118,8 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
-- 1.11, December 2019: fix bug that suppressing printout did not work
+- 1.11, January 2020: fix bug that suppressing printout did not work, and
+    add another verbosity level
 - 1.1, November 2019:
     Refactored code, require gretl 2018a
     Bundle now returns num_parameters, AIC/ BIC information criteria, R-square
@@ -136,8 +137,10 @@ Changelog:
   <param name="X" type="list" const="true">
 <description>List of regressors</description>
   </param>
-  <param name="printout" type="bool" default="1" const="true">
-<description>Print results?</description>
+  <param name="printout" type="int" min="0" max="2" default="2">
+<description>Verbosity level</description>
+<labels count="3">
+"silent" "quiet" "full" </labels>
   </param>
  </params>
 <code>/* Input data is standardized before doing ridge.
@@ -178,7 +181,7 @@ loop_through_lambda_values(&amp;self)
 get_xreorder_list(&amp;self, X)
 set_rowname_betas_and_tstats(&amp;self)
 if printout
-  print_ridge_results(&amp;self)
+  print_ridge_results(self, printout)
 endif
 # attached column names to matrices
 add_column_names_matrices(&amp;self)
@@ -188,7 +191,7 @@ return defbundle(&quot;coeffs&quot;,self.betas, &quot;tstats&quot;,self.tstats, 
 </gretl-function>
 <gretl-function name="ridge_svd" type="matrix">
  <params count="6">
-  <param name="lambda" type="scalar" const="true"/>
+  <param name="lambda" type="scalar"/>
   <param name="my" type="matrix" const="true">
 <description>Tx1 vector</description>
   </param>
@@ -228,7 +231,7 @@ return out
 </gretl-function>
 <gretl-function name="ridge_naive" type="matrix">
  <params count="5">
-  <param name="lambda" type="scalar" const="true"/>
+  <param name="lambda" type="scalar"/>
   <param name="my" type="matrix" const="true">
 <description>Tx1 vector</description>
   </param>
@@ -263,7 +266,7 @@ return out
 </gretl-function>
 <gretl-function name="ridge_aux" type="matrix">
  <params count="3">
-  <param name="lambda" type="scalar" const="true"/>
+  <param name="lambda" type="scalar"/>
   <param name="my" type="matrix" const="true">
 <description>Tx1 vector</description>
   </param>
@@ -273,7 +276,7 @@ return out
  </params>
 <code>/* Ridge function using auxiliary OLS.
 Here we do not obtain the Cov(b) matrix, return is just Kx1 beta vector. */
-scalar K = cols(mX)
+K = cols(mX)
 matrix mXa = mX | (sqrt(lambda) * I(K))
 matrix mya = my | zeros(K, 1)
 matrix beta = mols(mya, mXa)
@@ -324,7 +327,7 @@ endif
  </params>
 <code>/* Helper function estimating ridge + retrieving various stats
 for different shrinkage lambda parameters. */
-scalar idx = 1 + self.wconst
+idx = 1 + self.wconst
 loop i=1..self.n_lambdas -q
   matrix singular_value = {}
   matrix temp = ridge_svd(self.lambdas[i], self.my, self.mX, , &amp;singular_value)
@@ -362,17 +365,28 @@ endloop
 </code>
 </gretl-function>
 <gretl-function name="print_ridge_results" type="void" private="1">
- <params count="1">
-  <param name="self" type="bundleref"/>
+ <params count="2">
+  <param name="b" type="bundle"/>
+  <param name="verbosity" type="int" min="0" max="2" default="1"/>
  </params>
-<code>/* Print ridge results. */
-strings lbl = varnames(self.Xreorder) + defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;, &quot;G-CV&quot;, &quot;Effective num. params&quot;, &quot;R^2&quot;, &quot;R^2 (adj)&quot;, &quot;R^2 score&quot;, &quot;AIC&quot;, &quot;BIC&quot;)
-print &quot;Ridge regression results&quot;
-loop i = 1..self.n_lambdas -q
-  matrix cmat = self.betas[,i] ~ (self.betas[,i] ./ self.tstats[,i])
-  matrix extra = self.lambdas[i] | sqrt(self.s2s[i]) | self.gcv[i] | self.num_parameters[i] | self.r2_qcorr[i] | self.r2_qcorr_adj[i] | self.r2_scores[i] | self.aic[i] | self.bic[i]
-  modprint cmat lbl extra
-endloop
+<code>/* Print ridge results.
+It doesn't make much sense to call this function with verbosity==0, but it's possible.
+*/
+strings extralbl = defarray(&quot;Penalty&quot;, &quot;Resid SD&quot;, &quot;G-CV&quot;, &quot;Eff. num params&quot;, &quot;R^2&quot;, &quot;R^2 (adj)&quot;, &quot;R^2 score&quot;, &quot;AIC&quot;, &quot;BIC&quot;)
+strings lbl = varnames(b.Xreorder) + extralbl
+if verbosity == 2
+  print &quot;Ridge regression results (with details)&quot;
+  loop i = 1 .. b.n_lambdas -q
+    matrix cmat = b.betas[,i] ~ (b.betas[,i] ./ b.tstats[,i])
+    matrix extra = b.lambdas[i] | sqrt(b.s2s[i]) | b.gcv[i] | b.num_parameters[i] | b.r2_qcorr[i] | b.r2_qcorr_adj[i] | b.r2_scores[i] | b.aic[i] | b.bic[i]
+    modprint cmat lbl extra
+  endloop
+elif verbosity == 1
+  print &quot;Ridge regression results (summary)&quot;
+  matrix m = (b.lambdas ~ sqrt(b.s2s) ~ b.gcv ~ b.num_parameters ~ b.r2_qcorr ~ b.r2_qcorr_adj ~ b.r2_scores ~ b.aic ~ b.bic)'
+  rnameset(m, extralbl)
+  print m
+endif
 </code>
 </gretl-function>
 <gretl-function name="stdize_y_and_x" type="void" private="1">
@@ -393,19 +407,19 @@ self.mX = mX ./ self.Xsd
   <param name="self" type="bundleref"/>
  </params>
 <code>/* Add to selb bundle relevant empty matrices for storing stuff. */
-scalar k = (self.wconst==1) ? (nelem(self.X_without_const)+1) : nelem(self.X_without_const)
-matrix self.betas = NA*zeros(k, self.n_lambdas)
-matrix self.tstats = NA*zeros(k, self.n_lambdas)
-matrix self.resids = NA*zeros(rows(self.my), self.n_lambdas)
+k = (self.wconst == 1) ? nelem(self.X_without_const) + 1 : nelem(self.X_without_const)
+matrix self.betas = NA * zeros(k, self.n_lambdas)
+matrix self.tstats = NA * zeros(k, self.n_lambdas)
+matrix self.resids = NA * zeros(rows(self.my), self.n_lambdas)
 matrix self.s2s = zeros(self.n_lambdas, 1)
 matrices self.betaCovs = array(self.n_lambdas)
-matrix self.num_parameters = NA*zeros(1, self.n_lambdas)
-matrix self.aic = NA*zeros(1, self.n_lambdas)
-matrix self.bic = NA*zeros(1, self.n_lambdas)
-matrix self.r2_scores = NA*zeros(1, self.n_lambdas)
-matrix self.r2_qcorr = NA*zeros(1, self.n_lambdas)
-matrix self.r2_qcorr_adj = NA*zeros(1, self.n_lambdas)
-matrix self.gcv = NA*zeros(1, self.n_lambdas)
+matrix self.num_parameters = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.aic = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.bic = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.r2_scores = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.r2_qcorr = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.r2_qcorr_adj = NA * zeros(self.n_lambdas, 1)	# was 1,
+matrix self.gcv = NA * zeros(self.n_lambdas, 1)	# was 1,
 </code>
 </gretl-function>
 <gretl-function name="get_y_pred" type="matrix" private="1">
@@ -439,7 +453,7 @@ return resids'resids / rows(mX)
 <gretl-function name="effective_num_of_params" type="scalar" private="1">
  <params count="2">
   <param name="singular_value" type="matrix" const="true"/>
-  <param name="lambda" type="scalar" const="true"/>
+  <param name="lambda" type="scalar"/>
  </params>
 <code>/* Compute the effective number of parameters based on squared
 singular_values and the number of ridge parameters. This should be equal to
@@ -450,20 +464,20 @@ return sumc( singular_value_sq ./ (singular_value_sq + lambda) )
 </gretl-function>
 <gretl-function name="ridge_aic_bic" type="matrix" private="1">
  <params count="3">
-  <param name="num_param" type="scalar" const="true">
+  <param name="num_param" type="scalar">
 <description>Number of parameters</description>
   </param>
-  <param name="RSS" type="scalar" const="true">
+  <param name="RSS" type="scalar">
 <description>Residual sum of squares</description>
   </param>
-  <param name="N" type="int" const="true">
+  <param name="N" type="int">
 <description>No. of observations</description>
   </param>
  </params>
 <code>/* Compute both AIC and BIC criteria for ridge regression */
-scalar s = N * log(RSS)
-scalar aic = s + 2 * num_param
-scalar bic = s + num_param * log(N)
+s = N * log(RSS)
+aic = s + 2 * num_param
+bic = s + num_param * log(N)
 return aic | bic
 </code>
 </gretl-function>
@@ -475,7 +489,7 @@ return aic | bic
   <param name="y_pred" type="matrix">
 <description>T by 1 vector of estimated values</description>
   </param>
-  <param name="num_parameters" type="scalar" const="true">
+  <param name="num_parameters" type="scalar">
 <description>No. of parameters</description>
   </param>
  </params>
@@ -486,8 +500,8 @@ if rows(y_true) != rows(y_pred)
   printf &quot;\nError: Vectors y_true and y_pred are of different length.\n&quot;
   return NA
 endif
-if rows(y_pred)&lt;2
-  printf &quot;\nError: R^2 score is not well-defined with less than two samples.\n&quot;
+if rows(y_pred) &lt; 2
+  printf &quot;\nError: R^2 score not well-defined with less than two samples.\n&quot;
   return NA
 endif
 if isconst(y_true)
@@ -513,19 +527,19 @@ return corr(y_true, y_pred)^2
 </gretl-function>
 <gretl-function name="r2_qcorr_adjusted" type="scalar" private="1">
  <params count="3">
-  <param name="r2" type="scalar" const="true">
+  <param name="r2" type="scalar">
 <description>R-square from r2_qcorr()</description>
   </param>
-  <param name="n" type="int" const="true">
+  <param name="n" type="int">
 <description>Sample length</description>
   </param>
-  <param name="num_parameters" type="scalar" const="true">
+  <param name="num_parameters" type="scalar">
 <description>No. of ridge parameters used</description>
   </param>
  </params>
 <code>/* Adjusted R-square based on quadratic correlation */
-scalar nominator = n - 1
-scalar denominator = n - num_parameters - 1
+nominator = n - 1
+denominator = n - num_parameters - 1
 return 1 - (1-r2) * nominator/denominator
 </code>
 </gretl-function>
@@ -543,53 +557,64 @@ predicts the expected value of y, disregarding the input features, would get a R
 Notes
 -----
 This is not a symmetric function.
-Unlike most other scores, R^2 score may be negative (it need not actually
-be the square of a quantity R).
-This metric is not well-defined for single samples and will return a NaN
-value if n_samples is less than two.
+Unlike most other scores, R^2 score may be negative (it need not
+actually be the square of a quantity R).
+This metric is not well-defined for single samples and will return
+a NaN value if n_samples is less than two.
 References
 ----------
 &lt;https://github.com/scikit-learn/scikit-learn/blob/
-1495f69242646d239d89a5713982946b8ffcf9d9/sklearn/metrics/regression.py#L449&gt;
+1495f69242646d239d89a5713982946b8ffcf9d9/
+sklearn/metrics/regression.py#L449&gt;
 `Wikipedia entry on the Coefficient of determination
 &lt;https://en.wikipedia.org/wiki/Coefficient_of_determination&gt;`
 */
 # Initialize check values
-scalar nonzero_denominator = 0
-scalar nonzero_numerator = 0
-scalar valid_score = 0
+nonzero_denominator = 0
+nonzero_numerator = 0
+valid_score = 0
 # Compute statistics
 scalar numerator = sumc( (y_true-y_pred).^2)
 scalar denominator = sumc( (y_true-mean(y_true)).^2 )
-scalar nonzero_denominator = (denominator!=0) ? 1 : nonzero_denominator
-scalar nonzero_numerator = (numerator!=0) ? 1 : nonzero_numerator
-scalar valid_score = (nonzero_denominator &amp;&amp; nonzero_numerator) ? 1 : valid_score
-scalar output_scores = 1
-return (valid_score) ? (1-numerator/denominator) : output_scores
+nonzero_denominator = (denominator != 0) ? 1 : nonzero_denominator
+nonzero_numerator = (numerator!=0) ? 1 : nonzero_numerator
+valid_score = (nonzero_denominator &amp;&amp; nonzero_numerator) ? 1 : valid_score
+output_scores = 1
+return (valid_score) ? (1 - numerator/denominator) : output_scores
 </code>
 </gretl-function>
 <gretl-function name="generalized_cv_stats" type="scalar" private="1">
  <params count="3">
   <param name="resids" type="matrix" const="true"/>
-  <param name="N" type="int" min="1" const="true">
+  <param name="N" type="int" min="1">
 <description>Sample length</description>
   </param>
-  <param name="effective_num_of_params" type="scalar" const="true"/>
+  <param name="effective_num_of_params" type="scalar"/>
  </params>
 <code>/* Compute generalized cross-validation statistics. */
 return meanc( (resids / (1 - effective_num_of_params/N)).^2 )
 </code>
 </gretl-function>
 <sample-script>
-set verbose off
-clear 
+## Sample script for the ridge.gfn package for gretl
 
-include ridge.gfn --force
+set verbose off
+include ridge.gfn
+
+##### just a tiny helper function needed below ##############
+function matrix get_stats (const series y, const series yhat)
+   scalar SSR = sum((y - yhat)^2)
+   scalar SST = sum((y - mean(y))^2)
+   matrix ret = {SSR/$nobs, 1 - SSR/SST}
+   cnameset(ret, &quot;MSE R^2&quot;)
+   return ret
+end function
+#############################################################
 
 open australia.gdt --quiet
 
 # specify some penalty values
-matrix lambdas = {0.36, 0.5}
+matrix lambdas = {0.36, 0.5, 1.5, 2.5, 5.0, 10, 25}
 
 # define the variables
 series LHS = ldiff(PAU)
@@ -597,10 +622,45 @@ list RHS = const ldiff(PUS) IUS IAU(0 to -4)
 
 smpl --no-missing LHS RHS
 
+# Now we'll compare OLS forecasts with a series of 
+# predictive ridge regressions, using the specified
+# penalties (lambdas).
+# It turns out that the penalized ridge can be better 
+# out of sample than OLS.
+#
+# (Never mind the negative R2s which are relative to 
+# the out-of-sample mean value, a statistic which is 
+# not available at the time of the forecast. Only the 
+# ranking of the R2s matters.)
+
+# reserve some out-of-sample observations
+smpl ; -13
+smpl
+
+ols LHS RHS --simple-print
+matrix bols = $coeff
+
 # run the main function with default values
 bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge 
 
+smpl 1988:1 $tmax
+printf &quot;Out of sample, %d observations\n&quot;, $nobs
+printf &quot;OLS\n\n&quot;
+eval get_stats(LHS, lincomb(RHS, bols))
+
+matrix R = {}
+loop j=1..nelem(lambdas) -q
+   R |= get_stats(LHS, lincomb(RHS, b_ridge.coeffs[,j]))
+endloop
+R = lambdas' ~ R
+cnameset(R, &quot;lambda MSE R^2&quot;)
+printf &quot;Ridge\n\n&quot;
+print R
+
+##############################################
+print &quot; ------- ( End of forecasting exercise ) ----------&quot;
+
+print &quot; -------------------- Showing some internals -------------------&quot;
 
 # compare with the (computationally) naive alternative
 # (matrix-based function)

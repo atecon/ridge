@@ -1,12 +1,22 @@
-set verbose off
-clear 
+## Sample script for the ridge.gfn package for gretl
 
-include ridge.gfn --force
+set verbose off
+include ridge.gfn
+
+##### just a tiny helper function needed below ##############
+function matrix get_stats (const series y, const series yhat)
+   scalar SSR = sum((y - yhat)^2)
+   scalar SST = sum((y - mean(y))^2)
+   matrix ret = {SSR/$nobs, 1 - SSR/SST}
+   cnameset(ret, "MSE R^2")
+   return ret
+end function
+#############################################################
 
 open australia.gdt --quiet
 
 # specify some penalty values
-matrix lambdas = {0.36, 0.5}
+matrix lambdas = {0.36, 0.5, 1.5, 2.5, 5.0, 10, 25}
 
 # define the variables
 series LHS = ldiff(PAU)
@@ -14,10 +24,45 @@ list RHS = const ldiff(PUS) IUS IAU(0 to -4)
 
 smpl --no-missing LHS RHS
 
+# Now we'll compare OLS forecasts with a series of 
+# predictive ridge regressions, using the specified
+# penalties (lambdas).
+# It turns out that the penalized ridge can be better 
+# out of sample than OLS.
+#
+# (Never mind the negative R2s which are relative to 
+# the out-of-sample mean value, a statistic which is 
+# not available at the time of the forecast. Only the 
+# ranking of the R2s matters.)
+
+# reserve some out-of-sample observations
+smpl ; -13
+smpl
+
+ols LHS RHS --simple-print
+matrix bols = $coeff
+
 # run the main function with default values
 bundle b_ridge = ridge(lambdas, LHS, RHS)
-print b_ridge 
 
+smpl 1988:1 $tmax
+printf "Out of sample, %d observations\n", $nobs
+printf "OLS\n\n"
+eval get_stats(LHS, lincomb(RHS, bols))
+
+matrix R = {}
+loop j=1..nelem(lambdas) -q
+   R |= get_stats(LHS, lincomb(RHS, b_ridge.coeffs[,j]))
+endloop
+R = lambdas' ~ R
+cnameset(R, "lambda MSE R^2")
+printf "Ridge\n\n"
+print R
+
+##############################################
+print " ------- ( End of forecasting exercise ) ----------"
+
+print " -------------------- Showing some internals -------------------"
 
 # compare with the (computationally) naive alternative
 # (matrix-based function)

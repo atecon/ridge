@@ -28,8 +28,8 @@ The main function is also called "ridge" and takes the following arguments:
 (2) series y: required, the dependent variable
 (3) list X: required, the K regressors. If a constant is included, it is 
     moved to the first position.
-(4) boolean printout: optional, default is 1 (=yes). Set to 0 to just get 
-    the return bundle and not print anything.
+(4) int printout: optional, default is 2 (=full). Set to 0 to just get 
+    the return bundle and not print anything, or 1 to get just a summary.
 
 Input data is standardized before doing ridge. The output is rescaled to 
 match the original data, but since the demeaned data are used, no standard 
@@ -107,7 +107,8 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
-- 1.11, December 2019: fix bug that suppressing printout did not work
+- 1.11, January 2020: fix bug that suppressing printout did not work, and
+    add another verbosity level
 - 1.1, November 2019:
     Refactored code, require gretl 2018a
     Bundle now returns num_parameters, AIC/ BIC information criteria, R-square
