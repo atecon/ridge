@@ -42,12 +42,13 @@ smpl
 ols LHS RHS --simple-print
 matrix bols = $coeff
 
-# run the main function with default values
+print "#### Run the main ridge function with default values ####"
+print "#### (and several penalties)                         ####"
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 
 smpl 1988:1 $tmax
-printf "Out of sample, %d observations\n", $nobs
-printf "OLS\n\n"
+printf "Out of sample comparison, %d observations\n", $nobs
+printf "First OLS:\n\n"
 eval get_stats(LHS, lincomb(RHS, bols))
 
 matrix R = {}
@@ -56,47 +57,56 @@ loop j=1..nelem(lambdas) -q
 endloop
 R = lambdas' ~ R
 cnameset(R, "lambda MSE R^2")
-printf "Ridge\n\n"
+printf "Now Ridge:\n\n"
 print R
 
 ##############################################
-print " ------- ( End of forecasting exercise ) ----------"
+printf " ------- ( End of forecasting exercise ) ----------\n\n"
 
 print " -------------------- Showing some internals -------------------"
 
-# compare with the (computationally) naive alternative
-# (matrix-based function)
+smpl --full
+smpl --no-missing LHS RHS # revert sample
+print "-- compare with the (computationally naive) alternative"
+print "  (this function works on matrices)"
 matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
 print rn
-  
-## compare with OLS results 
-print "-- OLS comparison --"
-ols LHS RHS
 
-## now test an underdetermined case, #param > #obs:
+print "-- now test an underdetermined case, #param > #obs:"
 numk = 20
 N = 10
 matrix my = mnormal(N, 1)
 matrix mX = mnormal(N, numk)
 
-# use the matrix-based backend function directly
+print " ... using the matrix-based backend function ridge_svd directly"
 eval ridge_svd(lambdas[1], my, mX)[,1]
 
-## do a mechanical test of a no-constant case 
+print "-- do a mechanical test of a no-constant case"
 RHS = RHS - const
-bundle b_ridge = ridge(lambdas, LHS, RHS)
+bundle b_ridge = ridge(lambdas[1:6], LHS, RHS)
+
+print " ... the result bundle:"
 print b_ridge
+
+print " ... the collected coefficient 'paths':"
 matrix coeffs = b_ridge.coeffs
 coeffs
 
-matrix num_parameters = b_ridge.num_parameters			# no. of parameters
+print "-- show some of the statistics and indicators"
+# no. of parameters
+matrix num_parameters = b_ridge.num_parameters	
 num_parameters
 
-matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
+# r2 as computed in scikit-learn
+matrix r2_scores = b_ridge.r2_scores			
 r2_scores
-matrix r2_qcorr = b_ridge.r2_qcorr						# squared correlation between reaizations 'y' and fitted values 'yhat'
+
+# squared correlation between realizations 'y' and fitted values 'yhat'
+matrix r2_qcorr = b_ridge.r2_qcorr				
 r2_qcorr
-matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	# squared correlation between reaizations 'y' and fitted values 'yhat'
+
+# squared correlation between realizations 'y' and fitted values 'yhat'
+matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	
 r2_qcorr_adjusted
 
 matrix aic = b_ridge.aic

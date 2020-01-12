@@ -3,7 +3,7 @@
 <gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
 <author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
 <version>1.11</version>
-<date>2020-01-08</date>
+<date>2020-01-12</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
@@ -640,12 +640,13 @@ smpl
 ols LHS RHS --simple-print
 matrix bols = $coeff
 
-# run the main function with default values
+print &quot;#### Run the main ridge function with default values ####&quot;
+print &quot;#### (and several penalties)                         ####&quot;
 bundle b_ridge = ridge(lambdas, LHS, RHS)
 
 smpl 1988:1 $tmax
-printf &quot;Out of sample, %d observations\n&quot;, $nobs
-printf &quot;OLS\n\n&quot;
+printf &quot;Out of sample comparison, %d observations\n&quot;, $nobs
+printf &quot;First OLS:\n\n&quot;
 eval get_stats(LHS, lincomb(RHS, bols))
 
 matrix R = {}
@@ -654,47 +655,56 @@ loop j=1..nelem(lambdas) -q
 endloop
 R = lambdas' ~ R
 cnameset(R, &quot;lambda MSE R^2&quot;)
-printf &quot;Ridge\n\n&quot;
+printf &quot;Now Ridge:\n\n&quot;
 print R
 
 ##############################################
-print &quot; ------- ( End of forecasting exercise ) ----------&quot;
+printf &quot; ------- ( End of forecasting exercise ) ----------\n\n&quot;
 
 print &quot; -------------------- Showing some internals -------------------&quot;
 
-# compare with the (computationally) naive alternative
-# (matrix-based function)
+smpl --full
+smpl --no-missing LHS RHS # revert sample
+print &quot;-- compare with the (computationally naive) alternative&quot;
+print &quot;  (this function works on matrices)&quot;
 matrix rn = ridge_naive(lambdas[1], {LHS}, {RHS})
 print rn
-  
-## compare with OLS results 
-print &quot;-- OLS comparison --&quot;
-ols LHS RHS
 
-## now test an underdetermined case, #param &gt; #obs:
+print &quot;-- now test an underdetermined case, #param &gt; #obs:&quot;
 numk = 20
 N = 10
 matrix my = mnormal(N, 1)
 matrix mX = mnormal(N, numk)
 
-# use the matrix-based backend function directly
+print &quot; ... using the matrix-based backend function ridge_svd directly&quot;
 eval ridge_svd(lambdas[1], my, mX)[,1]
 
-## do a mechanical test of a no-constant case 
+print &quot;-- do a mechanical test of a no-constant case&quot;
 RHS = RHS - const
-bundle b_ridge = ridge(lambdas, LHS, RHS)
+bundle b_ridge = ridge(lambdas[1:6], LHS, RHS)
+
+print &quot; ... the result bundle:&quot;
 print b_ridge
+
+print &quot; ... the collected coefficient 'paths':&quot;
 matrix coeffs = b_ridge.coeffs
 coeffs
 
-matrix num_parameters = b_ridge.num_parameters			# no. of parameters
+print &quot;-- show some of the statistics and indicators&quot;
+# no. of parameters
+matrix num_parameters = b_ridge.num_parameters	
 num_parameters
 
-matrix r2_scores = b_ridge.r2_scores					# r2 as computed in scikit-learn
+# r2 as computed in scikit-learn
+matrix r2_scores = b_ridge.r2_scores			
 r2_scores
-matrix r2_qcorr = b_ridge.r2_qcorr						# squared correlation between reaizations 'y' and fitted values 'yhat'
+
+# squared correlation between realizations 'y' and fitted values 'yhat'
+matrix r2_qcorr = b_ridge.r2_qcorr				
 r2_qcorr
-matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	# squared correlation between reaizations 'y' and fitted values 'yhat'
+
+# squared correlation between realizations 'y' and fitted values 'yhat'
+matrix r2_qcorr_adjusted = b_ridge.r2_qcorr_adjusted	
 r2_qcorr_adjusted
 
 matrix aic = b_ridge.aic

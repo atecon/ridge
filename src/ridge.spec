@@ -1,7 +1,7 @@
 author = Sven Schreiber and Artur Tarassow
 email = svetosch@gmx.net
 version = 1.11
-date = 2020-01-08
+date = 2020-01-12
 description = Ridge regression
 tags = C13 C20
 min-version = 2018a
