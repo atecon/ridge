@@ -108,7 +108,7 @@ Returns a Kx1 coefficient matrix.
 
 Changelog:
 - 1.12, August 2020: make sure in function r2_stats() that returned data
-    type is matrix instead of scalar in case an error is catched
+    type is matrix instead of scalar in case an error is "catch"-ed.
 - 1.11, January 2020: fix bug that suppressing printout did not work, and
     add another verbosity level
 - 1.1, November 2019:
