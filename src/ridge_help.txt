@@ -6,9 +6,9 @@ This package implements the ridge regression, a penalized (or shrinkage)
 version of linear regression.
 Algebraically, the ridge estimator replaces the term (X'X) from OLS by
 the term (X'X + lambda * I), where lambda is a scalar penalty parameter
-(and I is the identity matrix). The default method in this package to 
+(and I is the identity matrix). The default method in this package to
 calculate the solution is by a singular-value decomposition, and to work
-on the standardized variables (mean zero, unit variance). 
+on the standardized variables (mean zero, unit variance).
 For other options see below.
 
 Notice, for a given lambda values you will get different results when
@@ -23,16 +23,16 @@ MASS-package for R see here:
 --------------------
 The main function is also called "ridge" and takes the following arguments:
 
-(1) matrix lambdas: required, L-element vector of penalties; passing a 
+(1) matrix lambdas: required, L-element vector of penalties; passing a
     scalar is also accepted by gretl
 (2) series y: required, the dependent variable
-(3) list X: required, the K regressors. If a constant is included, it is 
+(3) list X: required, the K regressors. If a constant is included, it is
     moved to the first position.
-(4) int printout: optional, default is 2 (=full). Set to 0 to just get 
+(4) int printout: optional, default is 2 (=full). Set to 0 to just get
     the return bundle and not print anything, or 1 to get just a summary.
 
-Input data is standardized before doing ridge. The output is rescaled to 
-match the original data, but since the demeaned data are used, no standard 
+Input data is standardized before doing ridge. The output is rescaled to
+match the original data, but since the demeaned data are used, no standard
 errors for the constant term coefficient are currently available.
 
 Returns a bundle with:
@@ -46,10 +46,10 @@ Returns a bundle with:
     included. Each vcv is calculated as s2 * Ri * X'X * Ri, where Ri is the
     inverse of (X'X + lambda * I). (No direct matrix inversion is done,
     though, for numerical reasons.)
-- uhats: TxL matrix of residual vectors, one for each lambda. 
+- uhats: TxL matrix of residual vectors, one for each lambda.
 - s2s: Lx1 vector of residual variance estimates (uhat'uhat / T), one for
     each lambda.
-- num_parameters: 1xL matrix holding the effective number of parameters 
+- num_parameters: 1xL matrix holding the effective number of parameters
     (corresponds to the trace of the projection matrix, is calculated
     based on the singular values)
 - aic: 1xL matrix holding the information criteria computed as:
@@ -63,17 +63,17 @@ Returns a bundle with:
 - r2_scores: 1xL matrix holding the coefficient of determination / regression
     score function. The best possible score is 1 and it can be negative
     (because the model can be arbitrarily worse). A constant model that
-    always predicts the expected value of y would get a R^2 score of 0.0. 
+    always predicts the expected value of y would get a R^2 score of 0.0.
     This is ported from scikit-learn, for further details see the 'r2_score'
     part in their sklearn/metrics/regression.py module.
 - gcv: 1xL matrix holding the generalized cross-validation statistics:
     gcv = mean{ [uhat / (1-num_parameters/N)].^2 }
-    For details see Patrick Breheny's slides: 
+    For details see Patrick Breheny's slides:
     <https://web.as.uky.edu/statistics/users/pbreheny/764-F11/notes/9-1.pdf>
 -------------------
 
 For script use (e.g., in simulations) there are also three matrix-oriented
-functions: ridge_svd, ridge_naive, ridge_aux. These functions work on the 
+functions: ridge_svd, ridge_naive, ridge_aux. These functions work on the
 input data as-is, no standardization is done, and they only accept a single
 penalty parameter.
 
@@ -82,9 +82,9 @@ uses the SVD to calculate results, takes the following arguments:
 (1) scalar lambda: required, the penalty parameter.
 (2) matrix my: required, data vector of the dependent variable.
 (3) matrix mX: required, data matrix of K regressors.
-(4) matrix-pointer resids: optional, acts as placeholder to retrieve 
+(4) matrix-pointer resids: optional, acts as placeholder to retrieve
     the residuals (similar to gretl's built-in mols function).
-(5) boolean withcov: optional, default 1 (=yes), set to 0 to only 
+(5) boolean withcov: optional, default 1 (=yes), set to 0 to only
     return the coeff point estimates.
 
 Returns a matrix:
@@ -93,7 +93,7 @@ beta_ridge, followed by the KxK matrix Cov(beta_ridge). Otherwise just a
 Kx1 matrix with the point estimates.
 
 ridge_naive...
-uses the textbook formulas directly, mainly for comparison purposes. 
+uses the textbook formulas directly, mainly for comparison purposes.
 Arguments and return values are identical to ridge_svd.
 
 ridge_aux...
@@ -107,6 +107,8 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
+- 1.12, August 2020: make sure in function r2_stats() that returned data
+    type is matrix instead of scalar in case an error is catched
 - 1.11, January 2020: fix bug that suppressing printout did not work, and
     add another verbosity level
 - 1.1, November 2019:
