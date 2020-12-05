@@ -1,6 +1,12 @@
-Help text for the ridge.gfn package by Sven Schreiber and Artur Tarassow
-(please ask questions and report bugs on the gretl mailing list if
-possible).
+The ridge.gfn contributed function package for gretl,
+by Sven Schreiber and Artur Tarassow
+(Please ask questions and report bugs mainly on the gretl mailing list.)
+
+Notice for users of recent gretl releases: Since version 2020e gretl 
+includes a new addon "regls" that provides the ridge estimator natively,
+as well as the newer Lasso and Elastic Net approaches. Unless you are on 
+an older gretl version or are using a special side feature of this package
+usage of the native regls is recommended.
 
 This package implements the ridge regression, a penalized (or shrinkage)
 version of linear regression.
@@ -107,6 +113,7 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
+- 1.2, December 2020: Just add a hint about gretl's new regls addon.
 - 1.12, August 2020: make sure in function r2_stats() that returned data
     type is matrix instead of scalar in case an error is "catch"-ed.
 - 1.11, January 2020: fix bug that suppressing printout did not work, and
