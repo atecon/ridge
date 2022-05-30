@@ -2,16 +2,16 @@
 <gretl-functions>
 <gretl-function-package name="ridge" no-data-ok="true" minver="2018a">
 <author email="svetosch@gmx.net">Sven Schreiber and Artur Tarassow</author>
-<version>1.2</version>
-<date>2020-12-07</date>
+<version>1.3</version>
+<date>2022-05-30</date>
 <description>Ridge regression</description>
 <tags>C13 C20</tags>
 <label>Ridge regression</label>
 <menu-attachment>MAINWIN/Model/LinearModels</menu-attachment>
 <help>
 The ridge.gfn contributed function package for gretl,
-by Sven Schreiber and Artur Tarassow
-(Please ask questions and report bugs mainly on the gretl mailing list.)
+by Sven Schreiber and Artur Tarassow.
+Please ask questions and report bugs mainly on the gretl mailing list.
 
 Notice for users of recent gretl releases: Since version 2020e gretl 
 includes a new addon &quot;regls&quot; that provides the ridge estimator natively,
@@ -124,6 +124,7 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
+- 1.3, May 2022: Make sure column/ row labels are properly written.
 - 1.2, December 2020: Just add a hint about gretl's new regls addon.
 - 1.12, August 2020: make sure in function r2_stats() that returned data
     type is matrix instead of scalar in case an error is &quot;catch&quot;-ed.
@@ -304,7 +305,10 @@ endloop
 strings to_be_named = defarray(&quot;betas&quot;, &quot;tstats&quot;, &quot;resids&quot;, &quot;s2s&quot;, &quot;r2_scores&quot;, &quot;r2_qcorr&quot;, &quot;r2_qcorr_adj&quot;, &quot;aic&quot;, &quot;bic&quot;, &quot;gcv&quot;, &quot;num_parameters&quot;)
 loop i=1..nelem(to_be_named) -q
   string item = sprintf(&quot;self.%s&quot;, to_be_named[i])
-  cnameset(@item, str_lambdas)
+  catch cnameset(@item, str_lambdas)
+  if $error  # some objects are column vectors
+    rnameset(@item, str_lambdas)
+  endif
 endloop
 </code>
 </gretl-function>

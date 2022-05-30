@@ -10,6 +10,7 @@ function bundle ridge (const matrix lambdas "Penalty parameters",
        coeffs: KxL matrix of ridge estimators, L being number of lambdas;
        If a constant term was originally included, its coefficient
        is estimated as mean(y - X_without_const'beta), where X_without_const does not
+
        contain the constant.
        tstats: KxL matrix of t-statistics; no tstat is available for
        the constant term, so if a constant term was given then
@@ -72,12 +73,16 @@ function void add_column_names_matrices (bundle *self)
         str_lambdas[i] = sprintf("λ=%.4f", self.lambdas[i])
     endloop
 
-    strings to_be_named = defarray("betas", "tstats", "resids", "s2s", "r2_scores", \
-      "r2_qcorr", "r2_qcorr_adj", "aic", "bic", "gcv", "num_parameters")
+    strings to_be_named = defarray("betas", "tstats", "resids", "s2s",\
+                                   "r2_scores", "r2_qcorr", "r2_qcorr_adj",\
+                                   "aic", "bic", "gcv", "num_parameters")
 
     loop i=1..nelem(to_be_named) -q
         string item = sprintf("self.%s", to_be_named[i])
-        cnameset(@item, str_lambdas)
+        catch cnameset(@item, str_lambdas)
+        if $error  # some objects are column vectors
+            rnameset(@item, str_lambdas)
+        endif
     endloop
 end function
 

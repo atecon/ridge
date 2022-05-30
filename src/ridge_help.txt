@@ -1,6 +1,6 @@
 The ridge.gfn contributed function package for gretl,
-by Sven Schreiber and Artur Tarassow
-(Please ask questions and report bugs mainly on the gretl mailing list.)
+by Sven Schreiber and Artur Tarassow.
+Please ask questions and report bugs mainly on the gretl mailing list.
 
 Notice for users of recent gretl releases: Since version 2020e gretl 
 includes a new addon "regls" that provides the ridge estimator natively,
@@ -113,6 +113,7 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
+- 1.3, May 2022: Make sure column/ row labels are properly written.
 - 1.2, December 2020: Just add a hint about gretl's new regls addon.
 - 1.12, August 2020: make sure in function r2_stats() that returned data
     type is matrix instead of scalar in case an error is "catch"-ed.
