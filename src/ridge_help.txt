@@ -111,7 +111,7 @@ Returns a Kx1 coefficient matrix.
 -------------------
 
 Changelog:
-- 1.3, May 2022: Make sure column/ row labels are properly written.
+- 1.3, June 2022: Make sure column/ row labels are properly written.
 - 1.2, December 2020: Just add a hint about gretl's new regls addon.
 - 1.12, August 2020: make sure in function r2_stats() that returned data
     type is matrix instead of scalar in case an error is "catch"-ed.
