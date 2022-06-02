@@ -28,10 +28,10 @@ calculate the solution is by a singular-value decomposition, and to work
 on the standardized variables (mean zero, unit variance).
 For other options see below.
 
-Notice, for a given lambda values you will get different results when
+Notice, for a given lambda value you will get different results when
 using the well-known glmnet package for R
 (https://cran.r-project.org/web/packages/glmnet/index.html). This is due
-to the additional division by the number of observations, N, that GLMNET
+to the additional division by the number of observations, N, that glmnet
 uses in its objective function and implicit standardization of Y by
 its sample standard deviation. For a comparison with glmnet and the
 MASS-package for R see here:
@@ -85,8 +85,6 @@ Returns a bundle with:
     part in their sklearn/metrics/regression.py module.
 - gcv: 1xL matrix holding the generalized cross-validation statistics:
     gcv = mean{ [uhat / (1-num_parameters/N)].^2 }
-    For details see Patrick Breheny's slides:
-    &lt;https://web.as.uky.edu/statistics/users/pbreheny/764-F11/notes/9-1.pdf&gt;
 -------------------
 
 For script use (e.g., in simulations) there are also three matrix-oriented
@@ -524,7 +522,7 @@ endif
 matrix R = NA * zeros(3,1)
 R[1] = r2_qcorr(&amp;y_true, &amp;y_pred)
 R[2] = r2_qcorr_adjusted(R[1], rows(y_true), num_parameters)
-R[3] = r2_score(&amp;y_true, &amp;y_pred)
+R[3] = r2_score(y_true, y_pred)
 rnameset(R, &quot;r2_qcorr r2_qcorr_adj r2_score&quot;)
 return R
 </code>
@@ -558,8 +556,8 @@ return 1 - (1-r2) * nominator/denominator
 </gretl-function>
 <gretl-function name="r2_score" type="scalar" private="1">
  <params count="2">
-  <param name="y_true" type="matrixref" const="true"/>
-  <param name="y_pred" type="matrixref" const="true">
+  <param name="y_true" type="matrix" const="true"/>
+  <param name="y_pred" type="matrix" const="true">
 <description>Must contain constant (bias) if present</description>
   </param>
  </params>

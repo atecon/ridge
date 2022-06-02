@@ -373,7 +373,7 @@ function matrix r2_stats (matrix y_true "T by 1 vector of realizations",
     matrix R = NA * zeros(3,1)
     R[1] = r2_qcorr(&y_true, &y_pred)
     R[2] = r2_qcorr_adjusted(R[1], rows(y_true), num_parameters)
-    R[3] = r2_score(&y_true, &y_pred)
+    R[3] = r2_score(y_true, y_pred)
     rnameset(R, "r2_qcorr r2_qcorr_adj r2_score")
 
     return R
@@ -399,8 +399,8 @@ function scalar r2_qcorr_adjusted (scalar r2 "R-square from r2_qcorr()",
 end function
 
 
-function scalar r2_score (const matrix *y_true,
-                          const matrix *y_pred \
+function scalar r2_score (const matrix y_true,
+                          const matrix y_pred \
                           "Must contain constant (bias) if present")
     /* R^2 (coefficient of determination) regression score function.
        Best possible score is 1.0 and it can be negative (because the
