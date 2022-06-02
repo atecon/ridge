@@ -17,10 +17,10 @@ calculate the solution is by a singular-value decomposition, and to work
 on the standardized variables (mean zero, unit variance).
 For other options see below.
 
-Notice, for a given lambda values you will get different results when
+Notice, for a given lambda value you will get different results when
 using the well-known glmnet package for R
 (https://cran.r-project.org/web/packages/glmnet/index.html). This is due
-to the additional division by the number of observations, N, that GLMNET
+to the additional division by the number of observations, N, that glmnet
 uses in its objective function and implicit standardization of Y by
 its sample standard deviation. For a comparison with glmnet and the
 MASS-package for R see here:
@@ -74,8 +74,6 @@ Returns a bundle with:
     part in their sklearn/metrics/regression.py module.
 - gcv: 1xL matrix holding the generalized cross-validation statistics:
     gcv = mean{ [uhat / (1-num_parameters/N)].^2 }
-    For details see Patrick Breheny's slides:
-    <https://web.as.uky.edu/statistics/users/pbreheny/764-F11/notes/9-1.pdf>
 -------------------
 
 For script use (e.g., in simulations) there are also three matrix-oriented
