@@ -690,8 +690,7 @@ matrix mX = mnormal(N, numk)
 print &quot; ... using the matrix-based backend function ridge_svd directly&quot;
 eval ridge_svd(lambdas[1], my, mX)[,1]
 
-print &quot;-- do a mechanical test of a no-constant case&quot;
-RHS = RHS - const
+print &quot;-- do a mechanical test&quot;
 bundle b_ridge = ridge(lambdas[1:6], LHS, RHS)
 
 print &quot; ... the result bundle:&quot;
