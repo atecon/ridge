@@ -1,15 +1,19 @@
-Package for running Ridge-regression using gretl.
+**This package got retired and archived on 2023-05-05**
 
-Authors: Sven Schreiber and Artur Tarassow
+You can still find the gfn-function package file here:
+https://github.com/atecon/ridge/blob/master/src/ridge.gfn
 
-** This package got retired and archived on 2023-05-05 **
-
-** Please use the *regls* addon written by Allin Cottrell instead:**
+**Please use the *regls* addon written by Allin Cottrell instead:**
 
 https://sourceforge.net/projects/gretl/files/addons/doc/regls.pdf
 
 
-### Description
+# Introduction
+Package for running Ridge-regression using gretl.
+
+**Authors**: Sven Schreiber and Artur Tarassow
+
+## Description
 
 This does not involve any cross-validation for obtaining some optimal shrinkage hyper-parameter 'lambda'.
 
